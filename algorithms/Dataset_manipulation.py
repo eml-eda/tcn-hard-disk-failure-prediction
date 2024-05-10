@@ -17,11 +17,25 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split, GridSearchCV
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import SMOTE
+import scipy
+import pdb;pdb.set_trace()
+import scipy.stats
 
 ## here there are many functions used inside Classification.py
 
 
 def plot_feature(dataset):
+	"""
+	Plots a scatter plot of a specific feature in the dataset.
+
+	Parameters:
+	- dataset (dict): A dictionary containing the dataset with keys 'X' and 'Y'.
+
+	Returns:
+	- None
+	"""
 	X = dataset['X']
 	Y = dataset['Y']
 	feat = X[:,10]
@@ -35,32 +49,60 @@ def plot_feature(dataset):
 	plt.legend(fontsize=12, prop = legend_properties)
 	plt.show()
 
-def plot_hdd(X, fail,prediction):
-	fig,ax = plt.subplots()	
-	features = {'Xiao_et_al':['date','failure','smart_1_normalized','smart_5_normalized','smart_5_raw','smart_7_normalized','smart_9_raw',\
-					'smart_12_raw','smart_183_raw','smart_184_normalized','smart_184_raw','smart_187_normalized','smart_187_raw',\
-					'smart_189_normalized','smart_193_normalized','smart_193_raw','smart_197_normalized','smart_197_raw','smart_198_normalized','smart_198_raw','smart_199_raw']}
-	k=0
-	for i in [1,2,7,8,9,10]:
-		ax.plot(np.arange(X.shape[0]),X[:,i]+0.01*k, label=features['Xiao_et_al'][i+2])
-		k+=1
-	ax.set_ylabel('SMART features value [#]', fontsize=14, fontweight='bold', color = 'C0')
+def plot_hdd(X, fail, prediction):
+	"""
+	Plots the SMART features of a hard disk drive (HDD) over time.
+
+	Parameters:
+	X (numpy.ndarray): The input array containing the SMART features of the HDD.
+	fail (int): The failure status of the HDD (1 for failed, 0 for good).
+	prediction (str): The predicted status of the HDD.
+
+	Returns:
+	None
+	"""
+	fig, ax = plt.subplots()
+	features = {'Xiao_et_al': ['date', 'failure', 'smart_1_normalized', 'smart_5_normalized', 'smart_5_raw', 'smart_7_normalized', 'smart_9_raw',
+							   'smart_12_raw', 'smart_183_raw', 'smart_184_normalized', 'smart_184_raw', 'smart_187_normalized', 'smart_187_raw',
+							   'smart_189_normalized', 'smart_193_normalized', 'smart_193_raw', 'smart_197_normalized', 'smart_197_raw',
+							   'smart_198_normalized', 'smart_198_raw', 'smart_199_raw']}
+	k = 0
+	for i in [1, 2, 7, 8, 9, 10]:
+		ax.plot(np.arange(X.shape[0]), X[:, i] + 0.01 * k, label=features['Xiao_et_al'][i + 2])
+		k += 1
+	ax.set_ylabel('SMART features value [#]', fontsize=14, fontweight='bold', color='C0')
 	ax.set_xlabel('time points', fontsize=14, fontweight='bold')
-	legend_properties = {'weight':'bold'}
-	plt.legend(fontsize=12, prop = legend_properties)
-	plt.title('The HDD is {} (failed=1/good=0) predicted as {}'.format(fail,prediction))
+	legend_properties = {'weight': 'bold'}
+	plt.legend(fontsize=12, prop=legend_properties)
+	plt.title('The HDD is {} (failed=1/good=0) predicted as {}'.format(fail, prediction))
 	plt.show()
 
 def pandas_to_3dmatrix(read_dir, model, years, dataset_raw):
+	"""
+	Convert a pandas DataFrame to a 3D matrix.
+
+	Args:
+		read_dir (str): The directory path where the matrix file will be read from or saved to.
+		model: The model object.
+		years (list): A list of years.
+		dataset_raw (pandas.DataFrame): The raw dataset.
+
+	Returns:
+		dict: The converted 3D matrix dataset.
+
+	Raises:
+		FileNotFoundError: If the matrix file is not found.
+
+	"""
 	join_years = '_'
 	for year in years:
 		join_years = join_years + year + '_'
 	name_file = 'Matrix_Dataset' + join_years +'.pkl'
-	try :
+	try:
 		with open(os.path.join(read_dir,name_file), 'rb') as handle:
 			dataset = pickle.load(handle)
 		print('Matrix 3d {} already present'.format(name_file))
-	except:
+	except FileNotFoundError:
 		print('Creating matrix 3d {}'.format(name_file))
 		row_valids = []
 		rows_dim = len(dataset_raw['failure'])
@@ -109,116 +151,148 @@ def pandas_to_3dmatrix(read_dir, model, years, dataset_raw):
 				failed+=1
 			except:
 				good +=1
-		print('There are {} disk goods and {} failed in the dataset'.format(good,failed))	
+		print('There are {} disk goods and {} failed in the dataset'.format(good,failed))    
 		dataset = {'matrix': matrix_3d}
 		with open(os.path.join(read_dir,name_file), 'wb') as handle:
 			pickle.dump(dataset,handle)
 	return dataset
 
-def matrix3d_to__datasets(matrix, window = 1, divide_hdd = 1, training_percentage = 0.7, lambda_unbalancing = 3):
+def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7, resampler_balancing = 5, oversample_undersample = 0):
+	"""
+	Convert a 3D matrix to datasets for training and testing.
+
+	Args:
+		matrix (ndarray): The 3D matrix containing the data.
+		window (int, optional): The size of the sliding window. Defaults to 1.
+		divide_hdd (int, optional): Flag to divide the HDDs. Defaults to 1.
+		training_percentage (float, optional): The percentage of data to use for training. Defaults to 0.7.
+		resampler_balancing (int, optional): The resampler balancing factor. Defaults to 5.
+		oversample_undersample (int, optional): The type of resampling to use. Defaults to 0.
+
+	Returns:
+		dict: A dictionary containing the training and testing datasets.
+
+	Raises:
+		FileNotFoundError: If the dataset file is not found.
+
+	"""
+
 	#np.random.shuffle(matrix)
 	name_file = 'Final_Dataset.pkl'
 	read_dir = os.path.dirname('../data_input/')
-	try :
-		with open(os.path.join(read_dir,name_file), 'rb') as handle:
+
+	try:
+		with open(os.path.join(read_dir, name_file), 'rb') as handle:
 			dataset = pickle.load(handle)
 		print('Dataset {} already present'.format(name_file))
-	except:
-		X_matrix = matrix[:,:,:]
+	except FileNotFoundError:
+		X_matrix = matrix[:, :, :]
 		Y_matrix = np.zeros(X_matrix.shape[0])
 		for hdd in np.arange(X_matrix.shape[0]):
 			try:
-				np.where(X_matrix[hdd,:,0]==1)[0][0]
+				np.where(X_matrix[hdd, :, 0] == 1)[0][0]
 				Y_matrix[hdd] = 1
 			except:
 				pass
 		print('Failed hard disk = {}'.format(sum(Y_matrix)))
+
 		if divide_hdd == 1:
-			from sklearn.model_selection import train_test_split
-			X_train_hd, X_test_hd, y_train_hd, y_test_hd = train_test_split(X_matrix, Y_matrix, stratify=Y_matrix, test_size=1-training_percentage)
-			### creating dataset per window.
-			### training set creation
+			# Creating dataset per window.
+			X_train_hd, X_test_hd, y_train_hd, y_test_hd = train_test_split(X_matrix, Y_matrix, stratify=Y_matrix,
+																			test_size=1 - training_percentage)
+
+			# Training set creation
 			first = 1
 			print('Processing training dataset')
 			for hdd_number in np.arange(y_train_hd.shape[0]):
-				print('Analizing HD number {} \r'.format(hdd_number), end="\r")
+				print('Analyzing HD number {} \r'.format(hdd_number), end="\r")
 				if y_train_hd[hdd_number] == 1:
-					temp = X_train_hd[hdd_number,:np.where(X_train_hd[hdd_number,:,0]==1)[0][0],1:]
-					if first:	
+					temp = X_train_hd[hdd_number, :np.where(X_train_hd[hdd_number, :, 0] == 1)[0][0], 1:]
+					if first:
 						X_train = temp
-						Y_train = np.concatenate((np.zeros(temp.shape[0]-7), np.ones(7)))
+						Y_train = np.concatenate((np.zeros(temp.shape[0] - 7), np.ones(7)))
 						first = 0
 					else:
-						X_train = np.concatenate((X_train,temp))
+						X_train = np.concatenate((X_train, temp))
 						try:
-							Y_train = np.concatenate((Y_train,np.zeros(temp.shape[0]-7), np.ones(7)))
+							Y_train = np.concatenate((Y_train, np.zeros(temp.shape[0] - 7), np.ones(7)))
 						except:
-							Y_train = np.concatenate((Y_train,np.ones(temp.shape[0])))
+							Y_train = np.concatenate((Y_train, np.ones(temp.shape[0])))
 				else:
 					try:
-						temp = X_train_hd[hdd_number,:(np.where(X_train_hd[hdd_number,:,0]==2)[0][0]-1-7),1:]
+						temp = X_train_hd[hdd_number, :(np.where(X_train_hd[hdd_number, :, 0] == 2)[0][0] - 1 - 7), 1:]
 					except:
-						temp = X_train_hd[hdd_number,:-7,1:]
-					if first:	
+						temp = X_train_hd[hdd_number, :-7, 1:]
+					if first:
 						X_train = temp
 						Y_train = (np.zeros(temp.shape[0]))
 						first = 0
 					else:
-						X_train = np.concatenate((X_train,temp))
+						X_train = np.concatenate((X_train, temp))
 						try:
-							Y_train = np.concatenate((Y_train,np.zeros(temp.shape[0])))
+							Y_train = np.concatenate((Y_train, np.zeros(temp.shape[0])))
 						except:
-							import pdb;pdb.set_trace()
+							import pdb;
+							pdb.set_trace()
+
+			# Test set creation
 			first = 1
 			print('Processing test dataset')
 			for hdd_number in np.arange(y_test_hd.shape[0]):
-				print('Analizing HD number {} \r'.format(hdd_number), end="\r")
+				print('Analyzing HD number {} \r'.format(hdd_number), end="\r")
 				if y_test_hd[hdd_number] == 1:
-					temp = X_test_hd[hdd_number,:np.where(X_test_hd[hdd_number,:,0]==1)[0][0],1:]
-					if first:	
+					temp = X_test_hd[hdd_number, :np.where(X_test_hd[hdd_number, :, 0] == 1)[0][0], 1:]
+					if first:
 						X_test = temp
-						Y_test = np.concatenate((np.zeros(temp.shape[0]-7), np.ones(7)))
+						Y_test = np.concatenate((np.zeros(temp.shape[0] - 7), np.ones(7)))
 						HD_number_test = np.zeros(temp.shape[0])
 						first = 0
 					else:
-						X_test = np.concatenate((X_test,temp))
-						HD_number_test = np.concatenate((HD_number_test,np.ones(temp.shape[0])*hdd_number))
+						X_test = np.concatenate((X_test, temp))
+						HD_number_test = np.concatenate((HD_number_test, np.ones(temp.shape[0]) * hdd_number))
 						try:
-							Y_test = np.concatenate((Y_test,np.zeros(temp.shape[0]-7), np.ones(7)))
+							Y_test = np.concatenate((Y_test, np.zeros(temp.shape[0] - 7), np.ones(7)))
 						except:
-							Y_test = np.concatenate((Y_test,np.ones(temp.shape[0])))
+							Y_test = np.concatenate((Y_test, np.ones(temp.shape[0])))
 				else:
 					try:
-						temp = X_test_hd[hdd_number,:(np.where(X_test_hd[hdd_number,:,0]==2)[0][0]-1-7),1:]
+						temp = X_test_hd[hdd_number, :(np.where(X_test_hd[hdd_number, :, 0] == 2)[0][0] - 1 - 7), 1:]
 					except:
-						temp = X_test_hd[hdd_number,:-7,1:]
-					if first:	
+						temp = X_test_hd[hdd_number, :-7, 1:]
+					if first:
 						X_test = temp
 						Y_test = (np.zeros(temp.shape[0]))
 						HD_number_test = np.zeros(temp.shape[0])
 						first = 0
 					else:
-						X_test = np.concatenate((X_test,temp))
-						HD_number_test = np.concatenate((HD_number_test,np.ones(temp.shape[0])*hdd_number))
+						X_test = np.concatenate((X_test, temp))
+						HD_number_test = np.concatenate((HD_number_test, np.ones(temp.shape[0]) * hdd_number))
 						try:
-							Y_test = np.concatenate((Y_test,np.zeros(temp.shape[0])))	
+							Y_test = np.concatenate((Y_test, np.zeros(temp.shape[0])))
 						except:
-							import pdb;pdb.set_trace()
+							import pdb;
+							pdb.set_trace()
+
+			# Remove rows with NaN values
 			Y_train = Y_train[~np.isnan(X_train).any(axis=1)]
 			X_train = X_train[~np.isnan(X_train).any(axis=1)]
 			Y_test = Y_test[~np.isnan(X_test).any(axis=1)]
 			HD_number_test = HD_number_test[~np.isnan(X_test).any(axis=1)]
 			X_test = X_test[~np.isnan(X_test).any(axis=1)]
+
+			# Resampling
 			if oversample_undersample == 0:
-				from imblearn.under_sampling import RandomUnderSampler
-				rus = RandomUnderSampler(1/resampler_balancing,random_state=42)
+				rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 			else:
-				from imblearn.over_sampling import SMOTE
-				rus = SMOTE(1/resampler_balancing,random_state=42)
+				rus = SMOTE(1 / resampler_balancing, random_state=42)
 			X_train, Y_train = rus.fit_resample(X_train, Y_train)
-			dataset = {'X_train': X_train, 'Y_train': Y_train, 'X_test': X_test, 'Y_test': Y_test, 'HDn_test': HD_number_test }
-			with open(os.path.join(read_dir,name_file), 'wb') as handle:
-				pickle.dump(dataset,handle)
+
+			dataset = {'X_train': X_train, 'Y_train': Y_train, 'X_test': X_test, 'Y_test': Y_test,
+					   'HDn_test': HD_number_test}
+
+			with open(os.path.join(read_dir, name_file), 'wb') as handle:
+				pickle.dump(dataset, handle)
+
 	return dataset
 
 def import_data(years, model,name, **args):
@@ -336,6 +410,17 @@ def interpolate_ts(df, method='linear'):
     return df
 
 def Y_target(df, days, window):
+    """
+    Generate target arrays for binary classification based on the failure column in the input dataframe.
+
+    :param df (pandas.DataFrame): Input dataframe containing the failure column.
+    :param days (int): Number of days to consider for failure prediction.
+    :param window (int): Number of days to consider for validation.
+
+    :return: A tuple containing two numpy arrays - pred_list and valid_list.
+            - pred_list: Array of predicted failure values, where 1 represents failure and 0 represents non-failure.
+            - valid_list: Array of validation values, where 1 represents the validation period and 0 represents the non-validation period.
+    """
     pred_list = np.asarray([])
     valid_list = np.asarray([])
     i=0
@@ -361,6 +446,13 @@ def arrays_to_matrix(X, wind_dim):
 	return X_new
 
 def feature_extraction(X):
+	"""
+	Extracts features from the input data.
+
+	:param X (ndarray): Input data of shape (samples, features, dim_window).
+
+	:return: ndarray: Extracted features of shape (samples, features, 4).
+	"""
 	print('Extracting Features')
 	samples, features, dim_window = X.shape
 	X_feature = np.ndarray((X.shape[0],X.shape[1], 4))
@@ -399,17 +491,39 @@ def under_sample(df, down_factor):
 	indexes = df.y.rolling(down_factor).max()[((len(df)-1)%down_factor):-7:down_factor].index.tolist()
 	return indexes
 
-def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 10, technique = 'random', test_train_perc = 0.2, windowing = 1, window_dim = 5, resampler_balancing = 5,oversample_undersample = 0):
+def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 10, technique = 'random', test_train_perc = 0.2, windowing = 1, window_dim = 5, resampler_balancing = 5, oversample_undersample = 0):
+	"""
+	Partition the dataset into training and test sets.
+
+	Parameters:
+	- df (DataFrame): The input dataset.
+	- model (str): The name of the model.
+	- overlap (int): The overlap value for windowing (default: 0).
+	- rank (str): The rank value (default: 'None').
+	- num_features (int): The number of features (default: 10).
+	- technique (str): The partitioning technique (default: 'random').
+	- test_train_perc (float): The percentage of data to be used for testing (default: 0.2).
+	- windowing (int): The windowing value (default: 1).
+	- window_dim (int): The window dimension (default: 5).
+	- resampler_balancing (int): The resampler balancing value (default: 5).
+	- oversample_undersample (int): The oversample/undersample value (default: 0).
+
+	Returns:
+	- Xtrain (ndarray): The training data.
+	- Xtest (ndarray): The test data.
+	- ytrain (Series): The training labels.
+	- ytest (Series): The test labels.
+	"""
 	df.reset_index(inplace=True)
 	mms = MinMaxScaler(feature_range=(0, 1))
-	temporal = df.loc[:, ['serial_number', 'date','failure', 'y','val']] 
-	df = df.drop(columns=['serial_number', 'date','failure', 'y','val'], axis=1)
+	temporal = df.loc[:, ['serial_number', 'date', 'failure', 'y', 'val']] 
+	df = df.drop(columns=['serial_number', 'date', 'failure', 'y', 'val'], axis=1)
 	df = pd.DataFrame(mms.fit_transform(df), columns= df.columns, index=df.index)
-	df[['serial_number', 'date','failure', 'y','val']] = temporal
+	df[['serial_number', 'date', 'failure', 'y', 'val']] = temporal
 	loaded = 0
 	if windowing == 1:
 		try:
-			windowed_df = pd.read_pickle('../temp/' + model +'_Dataset_windowed_' + str(window_dim) +'_rank_'+rank + '_' +str(num_features)+ '_overlap_'+str(overlap)+'.pkl')
+			windowed_df = pd.read_pickle('../temp/' + model + '_Dataset_windowed_' + str(window_dim) + '_rank_' + rank + '_' + str(num_features) + '_overlap_' + str(overlap) + '.pkl')
 			print('Loading the windowed dataset')
 			loaded = 1
 			cols = []
@@ -419,7 +533,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 			for column in windowed_df.columns:
 				if column in cols:
 					cols.append(f'{column}_{count[column]}')
-					count[column]+=1
+					count[column] += 1
 					continue
 				cols.append(column)
 			windowed_df.columns = cols
@@ -523,19 +637,18 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 			X = arrays_to_matrix(X, window_dim)
 		Xtrain, Xtest, ytrain, ytest = train_test_split(X,y,stratify=y,test_size=test_train_perc, random_state=42)
 		if oversample_undersample == 0:
-			from imblearn.under_sampling import RandomUnderSampler
-			rus = RandomUnderSampler(1/resampler_balancing,random_state=42)
+			# define train and test sets while taking into account whether the drive failed or not
+			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
-			from imblearn.over_sampling import SMOTE
-			rus = SMOTE(1/resampler_balancing,random_state=42)
+			rus = SMOTE(1 / resampler_balancing, random_state=42)
 		if oversample_undersample != 2:			
 			if windowing == 1:		
 				dim1 = Xtrain.shape[1]
 				dim2 = Xtrain.shape[2]
-				Xtrain = Xtrain.reshape(Xtrain.shape[0],Xtrain.shape[1]*Xtrain.shape[2])
+				Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1]*Xtrain.shape[2])
 				ytrain = ytrain.astype(int)
 				Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
-				Xtrain = Xtrain.reshape(Xtrain.shape[0],dim1,dim2)
+				Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
 				ytest = ytest.astype(int)
 			else:
 				Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)	
@@ -578,10 +691,8 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 			Xtrain = arrays_to_matrix(Xtrain)
 			Xtest = arrays_to_matrix(Xtest)
 		if oversample_undersample == 0:
-			from imblearn.under_sampling import RandomUnderSampler
 			rus = RandomUnderSampler(1/resampler_balancing,random_state=42)
 		else:
-			from imblearn.over_sampling import SMOTE
 			rus = SMOTE(1/resampler_balancing,random_state=42)
 		dim1 = Xtrain.shape[1]
 		dim2 = Xtrain.shape[2]
@@ -605,11 +716,9 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 		ytrain = y[:int(X.shape[0]*(1-test_train_perc))]
 		ytest = y[int(X.shape[0]*(1-test_train_perc)):]
 		if oversample_undersample == 0:
-			from imblearn.under_sampling import RandomUnderSampler
-			rus = RandomUnderSampler(1/resampler_balancing,random_state=42)
+			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
-			from imblearn.over_sampling import SMOTE
-			rus = SMOTE(1/resampler_balancing,random_state=42)
+			rus = SMOTE(1 / resampler_balancing, random_state=42)
 		dim1 = Xtrain.shape[1]
 		dim2 = Xtrain.shape[2]
 		Xtrain = Xtrain.reshape(Xtrain.shape[0],Xtrain.shape[1]*Xtrain.shape[2])
@@ -621,27 +730,42 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 	return Xtrain, Xtest, ytrain, ytest
 
 def feature_selection(df, num_features):
-	import scipy
+	"""
+	Selects the top 'num_features' features from the given dataframe based on statistical tests.
+
+	Args:
+		df (pandas.DataFrame): The input dataframe.
+		num_features (int): The number of features to select.
+
+	Returns:
+		pandas.DataFrame: The dataframe with the selected features.
+	"""
+
 	features = []
 	p = []
 	dict1 = {}
+
 	print('Feature selection')
-	import pdb;pdb.set_trace()
-	import scipy
-	scipy.stats.pearsonr(df['smart_4_raw'],df['smart_4_normalized'])
+
+	scipy.stats.pearsonr(df['smart_4_raw'], df['smart_4_normalized'])
+
 	for feature in df.columns:
 		if 'raw' in feature:
-			print('T-test for fature {} \r'.format(feature), end="\r")
-			_ ,p_val = scipy.stats.ttest_ind(df[df['y']==0][feature], df[df['y']==1][feature], axis=0,  nan_policy='omit')
+			print('T-test for feature {} \r'.format(feature), end="\r")
+			_, p_val = scipy.stats.ttest_ind(df[df['y'] == 0][feature], df[df['y'] == 1][feature], axis=0, nan_policy='omit')
 			dict1[feature] = p_val
+
 	print('T')
+
 	features = {k: v for k, v in sorted(dict1.items(), key=lambda item: item[1])}
-	features = pd.DataFrame(features.items(),index=features.keys()).dropna()
+	features = pd.DataFrame(features.items(), index=features.keys()).dropna()
 	features = features[:num_features][0].values
+
 	for feature in df.columns:
 		if 'smart' not in feature:
-			features = np.concatenate((features,np.asarray(feature).reshape(1,)))
-	df= df[features]
+			features = np.concatenate((features, np.asarray(feature).reshape(1,)))
+
+	df = df[features]
 	return df
 
 if __name__ == '__main__':

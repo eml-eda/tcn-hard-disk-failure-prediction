@@ -12,24 +12,25 @@ years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
 # zips contain different directory names or no directory at all, which causes
 # unavoidable "spaghettiness" in the code
 suffixes = {
-        'data_2013.zip': '2013',
-        'data_2014.zip': '2014',
-        'data_2015.zip': '2015',
-        'data_Q1_2016.zip': 'data_Q1_2016',
-        'data_Q2_2016.zip': 'data_Q2_2016',
-        'data_Q3_2016.zip': 'data_Q3_2016',
-        'data_Q4_2016.zip': None,
-        'data_Q1_2017.zip': None,
-        'data_Q2_2017.zip': None,
-        'data_Q3_2017.zip': None,
-        'data_Q4_2017.zip': 'data_Q4_2017',
-        'data_Q1_2018.zip': 'data_Q1_2018',
-        'data_Q2_2018.zip': None,
-        'data_Q3_2018.zip': None,
-        'data_Q4_2018.zip': 'data_Q4_2018',
-        'data_Q1_2019.zip': 'drive_stats_2019_Q1',
-        'data_Q2_2019.zip': 'data_Q2_2019',
-        'data_Q3_2019.zip': 'data_Q3_2019'}
+    'data_2013.zip': '2013',
+    'data_2014.zip': '2014',
+    'data_2015.zip': '2015',
+    'data_Q1_2016.zip': 'data_Q1_2016',
+    'data_Q2_2016.zip': 'data_Q2_2016',
+    'data_Q3_2016.zip': 'data_Q3_2016',
+    'data_Q4_2016.zip': None,
+    'data_Q1_2017.zip': None,
+    'data_Q2_2017.zip': None,
+    'data_Q3_2017.zip': None,
+    'data_Q4_2017.zip': 'data_Q4_2017',
+    'data_Q1_2018.zip': 'data_Q1_2018',
+    'data_Q2_2018.zip': None,
+    'data_Q3_2018.zip': None,
+    'data_Q4_2018.zip': 'data_Q4_2018',
+    'data_Q1_2019.zip': 'drive_stats_2019_Q1',
+    'data_Q2_2019.zip': 'data_Q2_2019',
+    'data_Q3_2019.zip': 'data_Q3_2019'
+}
 
 
 def main(years, base_path):
@@ -71,7 +72,7 @@ def main(years, base_path):
                             shutil.move(src_file_path, dest_file_path)
                         print("Moved file:", f, "to:", dest_file_path)
                     print("Removing empty directory:", unzip_path)
-                    os.rmdir(unzip_path)
+                    shutil.rmtree(unzip_path)
 
 
 

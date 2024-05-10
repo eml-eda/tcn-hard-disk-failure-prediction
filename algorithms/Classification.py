@@ -20,6 +20,21 @@ if not sys.warnoptions:
 
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
+	"""
+	Perform classification using the specified classifier.
+
+	Parameters:
+	- X_train (array-like): Training data features.
+	- Y_train (array-like): Training data labels.
+	- X_test (array-like): Test data features.
+	- Y_test (array-like): Test data labels.
+	- classifier (str): The classifier to use. Options: 'RandomForest', 'TCN', 'LSTM'.
+	- metric (str): The metric to evaluate the classification performance.
+	- **args: Additional arguments specific to each classifier.
+
+	Returns:
+	- None
+	"""
 	from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
 	from sklearn.utils import shuffle
 	print('Classification using {} is starting'.format(classifier))
@@ -28,20 +43,21 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 	if classifier == 'RandomForest':
 		from sklearn.ensemble import RandomForestClassifier
 		X_train, Y_train = shuffle(X_train, Y_train)
-		model = RandomForestClassifier(n_estimators =30, min_samples_split = 10,random_state=3)
-		model.fit(X_train[:,:], Y_train)
+		model = RandomForestClassifier(n_estimators=30, min_samples_split=10, random_state=3)
+		model.fit(X_train[:, :], Y_train)
 		prediction = model.predict(X_test)
 		Y_test_real = Y_test
 		report_metrics(Y_test_real, prediction, metric)
 	elif classifier == 'TCN':
-		net_train_validate(args['net'],args['optimizer'],X_train,Y_train,X_test,Y_test, args['epochs'], args['batch_size'], args['lr'])
+		net_train_validate(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
 	elif classifier == 'LSTM':
 		train_dataset = FPLSTMDataset(X_train, Y_train)
-		train_loader = torch.utils.data.DataLoader(train_dataset,batch_size = args['batch_size'],shuffle = True,collate_fn=FPLSTM_collate)
+		train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
 		test_dataset = FPLSTMDataset(X_test, Y_test.values)
-		test_loader = torch.utils.data.DataLoader(test_dataset,batch_size = args['batch_size'],shuffle = True,collate_fn=FPLSTM_collate)
-		net_train_validate_LSTM(args['net'],args['optimizer'],train_loader,test_loader, args['epochs'],X_test.shape[0], Xtrain.shape[0], args['lr'])
+		test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
+		net_train_validate_LSTM(args['net'], args['optimizer'], train_loader, test_loader, args['epochs'], X_test.shape[0], Xtrain.shape[0], args['lr'])
 		pass
+
 if __name__ == '__main__':
 	features = {'Xiao_et_al':['date','serial_number','model','failure','smart_1_normalized','smart_5_normalized','smart_5_raw','smart_7_normalized','smart_9_raw',\
 					'smart_12_raw','smart_183_raw','smart_184_normalized','smart_184_raw','smart_187_normalized','smart_187_raw',\
