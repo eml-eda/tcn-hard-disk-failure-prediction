@@ -16,7 +16,9 @@ from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
-
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
+from sklearn.utils import shuffle
 
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
@@ -35,13 +37,10 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 	Returns:
 	- None
 	"""
-	from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
-	from sklearn.utils import shuffle
 	print('Classification using {} is starting'.format(classifier))
 	Y_test_real = []
 	prediction = []
 	if classifier == 'RandomForest':
-		from sklearn.ensemble import RandomForestClassifier
 		X_train, Y_train = shuffle(X_train, Y_train)
 		model = RandomForestClassifier(n_estimators=30, min_samples_split=10, random_state=3)
 		model.fit(X_train[:, :], Y_train)
@@ -59,17 +58,57 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 		pass
 
 if __name__ == '__main__':
-	features = {'Xiao_et_al':['date','serial_number','model','failure','smart_1_normalized','smart_5_normalized','smart_5_raw','smart_7_normalized','smart_9_raw',\
-					'smart_12_raw','smart_183_raw','smart_184_normalized','smart_184_raw','smart_187_normalized','smart_187_raw',\
-					'smart_189_normalized','smart_193_normalized','smart_193_raw','smart_197_normalized','smart_197_raw','smart_198_normalized','smart_198_raw','smart_199_raw'],\
-				'iSTEP':['date','serial_number','model','failure','smart_5_raw','smart_3_raw','smart_10_raw',\
-					'smart_12_raw','smart_4_raw','smart_194_raw','smart_1_raw','smart_9_raw',\
-					'smart_192_raw','smart_193_raw','smart_197_raw','smart_198_raw','smart_199_raw']}
+	features = {
+		'Xiao_et_al': [
+			'date',
+			'serial_number',
+			'model',
+			'failure',
+			'smart_1_normalized', 
+			'smart_5_normalized',
+			'smart_5_raw',
+			'smart_7_normalized',
+			'smart_9_raw',
+			'smart_12_raw',
+			'smart_183_raw',
+			'smart_184_normalized',
+			'smart_184_raw', 
+			'smart_187_normalized',
+			'smart_187_raw',
+			'smart_189_normalized', 
+			'smart_193_normalized',
+			'smart_193_raw',
+			'smart_197_normalized', 
+			'smart_197_raw',
+			'smart_198_normalized',
+			'smart_198_raw',
+			'smart_199_raw'
+		],
+		'iSTEP': [
+			'date',
+			'serial_number',
+			'model',
+			'failure',
+			'smart_5_raw',
+			'smart_3_raw', 
+			'smart_10_raw',
+			'smart_12_raw',
+			'smart_4_raw',
+			'smart_194_raw', 
+			'smart_1_raw',
+			'smart_9_raw',
+			'smart_192_raw',
+			'smart_193_raw', 
+			'smart_197_raw',
+			'smart_198_raw',
+			'smart_199_raw'
+		]
+	}
 	#model = 'ST4000DM000'
 	# here you can select the model. This is the one tested.
 	model = 'ST3000DM001'
-	#years = ['2016','2017','2018']
-	years = ['2014','2015','2016','2017','2018']
+	#years = ['2016', '2017', '2018']
+	years = ['2014', '2015', '2016', '2017', '2018']
 	# many parameters that could be changed, both for unbalancing, for networks and for features.
 	windowing = 1
 	min_days_HDD = 115
@@ -101,8 +140,8 @@ if __name__ == '__main__':
 			missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
 			print('{:.<27}{}%'.format(column, missing))
 		# drop bad HDs
-		bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = min_days_HDD, time_window='30D', tolerance=30)
-		df['y'], df['val'] = Y_target(df, days=days_considered_as_failure, window = history_signal) # define RUL piecewise
+		bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
+		df['y'], df['val'] = Y_target(df, days=days_considered_as_failure, window=history_signal) # define RUL piecewise
 		if ranking is not 'None':
 			df = feature_selection(df, num_features)
 		print('Used features')
@@ -112,7 +151,7 @@ if __name__ == '__main__':
 		# random: stratified without keeping timw
 		# hdd --> separate different hdd (need FIXes)
 		# temporal --> separate by time (need FIXes)
-	Xtrain, Xtest, ytrain, ytest = dataset_partitioning(df, model, overlap = overlap, rank = ranking,num_features= num_features, technique = 'random', test_train_perc = test_train_perc, windowing = windowing, window_dim =history_signal, resampler_balancing = balancing_normal_failed, oversample_undersample = oversample_undersample)
+	Xtrain, Xtest, ytrain, ytest = dataset_partitioning(df, model, overlap=overlap, rank=ranking, num_features=num_features, technique='random', test_train_perc=test_train_perc, windowing=windowing, window_dim=history_signal, resampler_balancing=balancing_normal_failed, oversample_undersample=oversample_undersample)
 	####### CLASSIFIER PARAMETERS #######
 	if classifier == 'RandomForest':
 		pass

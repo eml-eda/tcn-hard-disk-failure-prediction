@@ -17,6 +17,7 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.linear_model import LinearRegression
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
 import scipy
@@ -62,10 +63,31 @@ def plot_hdd(X, fail, prediction):
 	None
 	"""
 	fig, ax = plt.subplots()
-	features = {'Xiao_et_al': ['date', 'failure', 'smart_1_normalized', 'smart_5_normalized', 'smart_5_raw', 'smart_7_normalized', 'smart_9_raw',
-							   'smart_12_raw', 'smart_183_raw', 'smart_184_normalized', 'smart_184_raw', 'smart_187_normalized', 'smart_187_raw',
-							   'smart_189_normalized', 'smart_193_normalized', 'smart_193_raw', 'smart_197_normalized', 'smart_197_raw',
-							   'smart_198_normalized', 'smart_198_raw', 'smart_199_raw']}
+	features = {
+		'Xiao_et_al': [
+			'date',
+			'failure',
+			'smart_1_normalized',
+			'smart_5_normalized',
+			'smart_5_raw',
+			'smart_7_normalized',
+			'smart_9_raw',
+			'smart_12_raw',
+			'smart_183_raw',
+			'smart_184_normalized',
+			'smart_184_raw',
+			'smart_187_normalized',
+			'smart_187_raw',
+			'smart_189_normalized',
+			'smart_193_normalized',
+			'smart_193_raw',
+			'smart_197_normalized',
+			'smart_197_raw',
+			'smart_198_normalized',
+			'smart_198_raw',
+			'smart_199_raw'
+		]
+	}
 	k = 0
 	for i in [1, 2, 7, 8, 9, 10]:
 		ax.plot(np.arange(X.shape[0]), X[:, i] + 0.01 * k, label=features['Xiao_et_al'][i + 2])
@@ -442,7 +464,18 @@ def Y_target(df, days, window):
     return pred_list, valid_list
 
 def arrays_to_matrix(X, wind_dim):
-	X_new = X.reshape(X.shape[0],int(X.shape[1]/wind_dim),wind_dim)
+	"""
+	Reshapes the input array X into a matrix with a specified window dimension.
+
+	Parameters:
+	X (ndarray): The input array to be reshaped.
+	wind_dim (int): The window dimension for reshaping the array.
+
+	Returns:
+	ndarray: The reshaped matrix.
+
+	"""
+	X_new = X.reshape(X.shape[0], int(X.shape[1] / wind_dim), wind_dim)
 	return X_new
 
 def feature_extraction(X):
@@ -457,14 +490,17 @@ def feature_extraction(X):
 	samples, features, dim_window = X.shape
 	X_feature = np.ndarray((X.shape[0],X.shape[1], 4))
 	print('Sum')
+	# sum of all the features
 	X_feature[:,:,0] = np.sum((X), axis = 2)
 	print('Min')
+	# min of all the features
 	X_feature[:,:,1] = np.min((X), axis = 2)
 	print('Max')
+	# max of all the features
 	X_feature[:,:,2] = np.max((X), axis = 2)
 	print('Similar slope')
-	X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2))/dim_window
-	from sklearn.linear_model import LinearRegression
+	# Calculate the slope of the features
+	X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
 	'''
 	print('Slope')
 	for s in np.arange(samples):
@@ -477,6 +513,15 @@ def feature_extraction(X):
 	return X_feature
 
 def factors(n):
+	"""
+	Returns a list of factors of the given number.
+
+	Parameters:
+	n (int): The number to find the factors of.
+
+	Returns:
+	list: A list of factors of the given number.
+	"""
 	factors = []
 	while n > 1:
 		for i in range(2, n + 1):
@@ -488,7 +533,25 @@ def factors(n):
 	return factors
 
 def under_sample(df, down_factor):
-	indexes = df.y.rolling(down_factor).max()[((len(df)-1)%down_factor):-7:down_factor].index.tolist()
+	"""
+	Perform under-sampling on a DataFrame.
+
+	Args:
+		df (pandas.DataFrame): The input DataFrame.
+		down_factor (int): The down-sampling factor.
+
+	Returns:
+		list: A list of indexes to be used for under-sampling.
+
+	"""
+	indexes = (
+		df.y
+		.rolling(down_factor) # Create a rolling window of size down_factor over the 'y' column
+		.max() # Find the maximum value in each window.
+		[((len(df) - 1) % down_factor):-7:down_factor]
+		.index
+		.tolist()
+	)
 	return indexes
 
 def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 10, technique = 'random', test_train_perc = 0.2, windowing = 1, window_dim = 5, resampler_balancing = 5, oversample_undersample = 0):
@@ -769,9 +832,33 @@ def feature_selection(df, num_features):
 	return df
 
 if __name__ == '__main__':
-	features = {'Xiao_et_al':['date','serial_number','model','failure','smart_1_normalized','smart_5_normalized','smart_5_raw','smart_7_normalized','smart_9_raw',\
-					'smart_12_raw','smart_183_raw','smart_184_normalized','smart_184_raw','smart_187_normalized','smart_187_raw',\
-					'smart_189_normalized','smart_193_normalized','smart_193_raw','smart_197_normalized','smart_197_raw','smart_198_normalized','smart_198_raw','smart_199_raw']}
+	features = {
+		'Xiao_et_al': [
+			'date',
+			'serial_number',
+			'model',
+			'failure',
+			'smart_1_normalized',
+			'smart_5_normalized',
+			'smart_5_raw',
+			'smart_7_normalized',
+			'smart_9_raw',
+			'smart_12_raw',
+			'smart_183_raw',
+			'smart_184_normalized',
+			'smart_184_raw',
+			'smart_187_normalized',
+			'smart_187_raw',
+			'smart_189_normalized',
+			'smart_193_normalized',
+			'smart_193_raw',
+			'smart_197_normalized',
+			'smart_197_raw',
+			'smart_198_normalized',
+			'smart_198_raw',
+			'smart_199_raw'
+		]
+	}
 	#dataset = dataset[features['Xiao_et_al']]
 	model = 'ST3000DM001'
 	years = ['2013','2014','2015','2016','2017']
