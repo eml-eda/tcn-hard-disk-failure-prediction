@@ -14,6 +14,18 @@ import math
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
 class FPLSTMDataset(torch.utils.data.Dataset):
+    """
+    A PyTorch dataset class for the FPLSTM model.
+
+    Args:
+        x (numpy.ndarray): Input data of shape (num_samples, num_timesteps, num_features).
+        y (numpy.ndarray): Target labels of shape (num_samples,).
+
+    Attributes:
+        x_tensors (dict): Dictionary containing input data tensors, with keys as indices and values as torch.Tensor objects.
+        y_tensors (dict): Dictionary containing target label tensors, with keys as indices and values as torch.Tensor objects.
+    """
+
     def __init__(self, x, y):
         # swap axes to have timesteps before features
         self.x_tensors = {i : torch.as_tensor(np.swapaxes(x[i,:,:], 0, 1),
@@ -22,12 +34,36 @@ class FPLSTMDataset(torch.utils.data.Dataset):
                 for i in range(y.shape[0])}
 
     def __len__(self):
+        """
+        Returns the number of samples in the dataset.
+
+        Returns:
+            int: Number of samples.
+        """
         return len(self.x_tensors.keys())
 
     def __getitem__(self, idx):
+        """
+        Returns the data and label at the given index.
+
+        Args:
+            idx (int): Index of the sample.
+
+        Returns:
+            tuple: A tuple containing the input data tensor and the target label tensor.
+        """
         return (self.x_tensors[idx], self.y_tensors[idx])
 
 def FPLSTM_collate(batch):
+    """
+    Collates a batch of data for FPLSTM model.
+
+    Args:
+        batch (list): A list of tuples containing input and target tensors.
+
+    Returns:
+        tuple: A tuple containing the collated input tensor and target tensor.
+    """
     xx, yy = zip(*batch)
     x_batch = torch.stack(xx).permute(1, 0, 2)
     y_batch = torch.stack(yy)
@@ -36,22 +72,48 @@ def FPLSTM_collate(batch):
 # fault prediction LSTM: this network is used as a reference in the paper
 class FPLSTM(nn.Module):
 
-    def __init__(self, lstm_size, fc1_size, input_size, n_classes,
-            dropout_prob):
+    def __init__(self, lstm_size, fc1_size, input_size, n_classes, dropout_prob):
+        """
+        Initialize the FPLSTM class.
+
+        Args:
+            lstm_size (int): The size of the LSTM layer.
+            fc1_size (int): The size of the first fully connected layer.
+            input_size (int): The size of the input.
+            n_classes (int): The number of output classes.
+            dropout_prob (float): The probability of dropout.
+
+        Returns:
+            None
+        """
         super(FPLSTM, self).__init__()
+        # The model layers include:
+        # - LSTM: Processes the input sequence with a specified number of features in the hidden state.
+        # - Dropout1: Applies dropout after the LSTM to reduce overfitting.
+        # - FC1: A fully connected layer that maps the LSTM output to a higher or lower dimensional space.
+        # - Dropout2: Applies dropout after the first fully connected layer.
+        # - FC2: The final fully connected layer that outputs the predictions for the given number of classes.
         self.lstm_size = lstm_size
         self.lstm = nn.LSTM(input_size, lstm_size)
-        self.do1  = nn.Dropout(dropout_prob)
+        self.do1 = nn.Dropout(dropout_prob)
         self.fc1 = nn.Linear(lstm_size, fc1_size)
-        self.do2  = nn.Dropout(dropout_prob)
+        self.do2 = nn.Dropout(dropout_prob)
         self.fc2 = nn.Linear(fc1_size, n_classes)
 
     def forward(self, x_batch):
-        # not sure where exactly Dropout is used in [14]
+        """
+        Forward pass of the network.
+
+        Args:
+            x_batch (torch.Tensor): Input batch of data.
+
+        Returns:
+            torch.Tensor: Output of the network.
+        """
         _, last_lstm_out = self.lstm(x_batch)
         (h_last, c_last) = last_lstm_out
         # reshape to (batch_size, hidden_size)
-        h_last = h_last [-1]
+        h_last = h_last[-1]
         do1_out = self.do1(h_last)
         fc1_out = F.relu(self.fc1(do1_out))
         do2_out = self.do2(fc1_out)
@@ -73,6 +135,14 @@ class Net_paper(nn.Module):
         """
         super(Net_paper, self).__init__()
 
+        # Dilated Convolution Block 0: 
+        # - 1D Convolutional layer (Conv1d) with num_inputs input channels, 32 output channels, kernel size of 3, dilation of 2, and padding of 2.
+        # - Batch normalization (BatchNorm1d) for 32 features.
+        # - ReLU activation function.
+        # - Second 1D Convolutional layer (Conv1d) with 32 input channels, 64 output channels, kernel size of 3, dilation of 2, and padding of 2.
+        # - 1D Average pooling layer (AvgPool1d) with kernel size of 3, stride of 2, and padding of 1.
+        # - Batch normalization (BatchNorm1d) for 64 features.
+        # - ReLU activation function.
         self.b0_tcn0 = nn.Conv1d(num_inputs, 32, 3, dilation=2, padding=2)
         self.b0_tcn0_BN = nn.BatchNorm1d(32)
         self.b0_tcn0_ReLU = nn.ReLU()
@@ -81,6 +151,14 @@ class Net_paper(nn.Module):
         self.b0_tcn1_BN = nn.BatchNorm1d(64)
         self.b0_tcn1_ReLU = nn.ReLU()
 
+        # Dilated Convolution Block 1:
+        # - 1D Convolutional layer (Conv1d) with 64 input channels, 64 output channels, kernel size of 3, dilation of 2, and padding of 2.
+        # - Batch normalization (BatchNorm1d) for 64 features.
+        # - ReLU activation function.
+        # - Second 1D Convolutional layer (Conv1d) with 64 input channels, 128 output channels, kernel size of 3, dilation of 2, and padding of 2.
+        # - 1D Average pooling layer (AvgPool1d) with kernel size of 3, stride of 2, and padding of 1.
+        # - Batch normalization (BatchNorm1d) for 128 features.
+        # - ReLU activation function.
         self.b1_tcn0 = nn.Conv1d(64, 64, 3, dilation=2, padding=2)
         self.b1_tcn0_BN = nn.BatchNorm1d(64)
         self.b1_tcn0_ReLU = nn.ReLU()
@@ -89,6 +167,14 @@ class Net_paper(nn.Module):
         self.b1_tcn1_BN = nn.BatchNorm1d(128)
         self.b1_tcn1_ReLU = nn.ReLU()
 
+        # Dilated Convolution Block 2:
+        # - 1D Convolutional layer (Conv1d) with 128 input channels, 128 output channels, kernel size of 3, dilation of 4, and padding of 4.
+        # - Batch normalization (BatchNorm1d) for 128 features.
+        # - ReLU activation function.
+        # - Repeat 1D Convolutional layer with the same specifications as the first.
+        # - 1D Average pooling layer (AvgPool1d) with kernel size of 3, stride of 2, and padding of 1.
+        # - Batch normalization (BatchNorm1d) for 128 features from the second convolutional layer.
+        # - ReLU activation function.
         self.b2_tcn0 = nn.Conv1d(128, 128, 3, dilation=4, padding=4)
         self.b2_tcn0_BN = nn.BatchNorm1d(128)
         self.b2_tcn0_ReLU = nn.ReLU()
@@ -97,17 +183,29 @@ class Net_paper(nn.Module):
         self.b2_tcn1_BN = nn.BatchNorm1d(128)
         self.b2_tcn1_ReLU = nn.ReLU()
 
+        # Fully Connected Layer 0:
+        # - FC0: Linear transformation from dynamically calculated dimension (based on signal history and pooling) to 256 units. Calculated as the ceiling of three halvings of history_signal multiplied by 128.
+        # - Batch normalization (BatchNorm1d) for 256 features.
+        # - ReLU activation function.
+        # - Dropout applied at 50% rate to reduce overfitting.
+
         dim_fc = int(math.ceil(math.ceil(math.ceil(history_signal/2)/2)/2)*128)
         self.FC0 = nn.Linear(dim_fc, 256) # 592 in the Excel, 768 ours with pooling
         self.FC0_BN = nn.BatchNorm1d(256)
         self.FC0_ReLU = nn.ReLU()
         self.FC0_dropout = nn.Dropout(0.5)
-        
+
+        # Fully Connected Layer 1:
+        # - FC1: Linear transformation from 256 to 64 units.
+        # - Batch normalization (BatchNorm1d) for 64 features.
+        # - ReLU activation function.
+        # - Dropout applied at 50% rate.
         self.FC1 = nn.Linear(256, 64)
         self.FC1_BN = nn.BatchNorm1d(64)
         self.FC1_ReLU = nn.ReLU()
         self.FC1_dropout = nn.Dropout(0.5)
         
+        # Final Linear transformation from 64 units to 2 output units for binary classification.
         self.GwayFC = nn.Linear(64, 2)
 
     def forward(self, x): # computation --> Pool --> BN --> activ --> dropout
@@ -215,6 +313,7 @@ def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
 
     """
     train_loss = 0
+    # Randomize the order of the elements in the training set to ensure that the training process is not influenced by the order of the data
     Xtrain, ytrain = shuffle(Xtrain, ytrain)
     model.train()
     samples, features, dim_window = Xtrain.shape
@@ -387,6 +486,18 @@ def train_LSTM(ep, train_loader, optimizer, model, Xtrain_examples):
     return F1
 
 def test_LSTM(model, test_loader, Xtest_examples):
+    """
+    Test the LSTM model on the test dataset.
+
+    Args:
+        model (torch.nn.Module): The LSTM model to be tested.
+        test_loader (torch.utils.data.DataLoader): The data loader for the test dataset.
+        Xtest_examples (int): The number of examples in the test dataset.
+
+    Returns:
+        None
+
+    """
     model.eval()
     test_loss = 0
     correct = 0

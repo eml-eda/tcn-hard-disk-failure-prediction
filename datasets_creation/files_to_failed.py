@@ -3,58 +3,44 @@ import numpy as np
 import pandas as pd
 import datetime
 
-# Get the directory of the script
+# Define paths
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Build the relative path from the script directory
-base_path = os.path.join(script_dir, '../../HDD_dataset/')
-
-# Normalize the path (remove redundant separators and up-level references)
-base_path = os.path.normpath(base_path)
-
-data_dir = os.path.dirname(base_path)
+base_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'HDD_dataset'))
 
 # Define the directories for each year
-year_dir = {
-    '2013': os.path.join(base_path, '2013/'),
-    '2014': os.path.join(base_path, '2014/'),
-    '2015': os.path.join(base_path, '2015/'),
-    '2016': os.path.join(base_path, '2016/'),
-    '2017': os.path.join(base_path, '2017/'),
-    '2018': os.path.join(base_path, '2018/'),
-    '2019': os.path.join(base_path, '2019/')
-}
+year_dirs = {year: os.path.join(base_path, year) for year in map(str, range(2013, 2020))}
 
-years = ['2013', '2014', '2015', '2016', '2017']
+years = [str(year) for year in range(2013, 2018)]
 model = 'ST3000DM001'
 
 # Load the failed hard drives
-failed = np.load('../temp/HDD_all_'+ model + '.npy')
-failed = dict.fromkeys(failed).keys()
+failed = set(np.load(os.path.join(script_dir, '..', 'temp', f'HDD_all_{model}.npy')))
 
 database = pd.DataFrame()
 
 # Iterate over each year
 for year in years:
-    old_time = datetime.datetime.strptime(year+'-01-01', '%Y-%m-%d')
-    read_dir = os.path.join(data_dir,year_dir[year])
-    
+    year_path = year_dirs[year]
+    files = sorted([f for f in os.listdir(year_path) if f.endswith('.csv')])
+
     # Iterate over each file in the directory
-    for file in sorted(os.listdir(read_dir)):
-        if os.path.isfile(os.path.join(read_dir,file)):
-            if 'csv' in file:
-                if datetime.datetime.strptime(file.split('.')[0], '%Y-%m-%d')>=old_time:
-                    file_r = pd.read_csv(os.path.join(read_dir,file))
-                    model_chosen = file_r[file_r['model']==model]
-                    row = model_chosen[model_chosen['serial_number'].isin(failed)]
-                    
-                    # Drop unnecessary columns
-                    if 'smart_22_raw' in row.columns:
-                        row = row.drop(['smart_22_raw','smart_22_normalized','smart_220_raw','smart_220_normalized','smart_222_raw','smart_222_normalized','smart_224_raw','smart_224_normalized','smart_226_raw','smart_226_normalized'],axis=1)
-                    
-                    # Append the row to the database
-                    database = database.append(row)
-                    print('adding day ' + str(np.asarray(model_chosen['date'].values)))
+    for file in files:
+        file_path = os.path.join(year_path, file)
+        file_date = datetime.datetime.strptime(file.split('.')[0], '%Y-%m-%d')
+        old_time = datetime.datetime.strptime(f'{year}-01-01', '%Y-%m-%d')
+        
+        if file_date >= old_time:
+            df = pd.read_csv(file_path)
+            model_chosen = df[df['model'] == model]
+            relevant_rows = model_chosen[model_chosen['serial_number'].isin(failed)]
+
+            # Drop unnecessary columns
+            drop_columns = [col for col in relevant_rows if 'smart_' in col and int(col.split('_')[1]) in {22, 220, 222, 224, 226}]
+            relevant_rows.drop(columns=drop_columns, errors='ignore', inplace=True)
+
+            # Append the row to the database
+            database = pd.concat([database, relevant_rows], ignore_index=True)
+            print('adding day ' + str(model_chosen['date'].values))
 
 # Save the database to a pickle file
-database.to_pickle('../temp/All_failed_appended_' + model +'.pkl')
+database.to_pickle(os.path.join(script_dir, '..', 'temp', f'All_failed_appended_{model}.pkl'))

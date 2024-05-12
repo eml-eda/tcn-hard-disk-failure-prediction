@@ -48,6 +48,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 		Y_test_real = Y_test
 		report_metrics(Y_test_real, prediction, metric)
 	elif classifier == 'TCN':
+		# Train and validate the network using TCN
 		net_train_validate(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
 	elif classifier == 'LSTM':
 		train_dataset = FPLSTMDataset(X_train, Y_train)
@@ -112,11 +113,13 @@ if __name__ == '__main__':
 	# many parameters that could be changed, both for unbalancing, for networks and for features.
 	windowing = 1
 	min_days_HDD = 115
+	# TODO: Can be adjusted by dynamic parameters
 	days_considered_as_failure = 7
 	test_train_perc = 0.3
 	# type of oversampling
 	oversample_undersample = 2
 	# balancing factor (major/minor = balancing_normal_failed)
+	# TODO: We can calculate the imbalance ratio of the dataset and use this ratio to adjust the balancing factor.
 	balancing_normal_failed = 20
 	history_signal = 32
 	# type of classifier
@@ -141,7 +144,9 @@ if __name__ == '__main__':
 			print('{:.<27}{}%'.format(column, missing))
 		# drop bad HDs
 		bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
-		df['y'], df['val'] = Y_target(df, days=days_considered_as_failure, window=history_signal) # define RUL piecewise
+		# y represents the prediction of the failure
+		# val represents the validation of the failure
+		df['y'], df['val'] = Y_target(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
 		if ranking is not 'None':
 			df = feature_selection(df, num_features)
 		print('Used features')
@@ -158,20 +163,21 @@ if __name__ == '__main__':
 	elif classifier == 'TCN':
 		os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
 		batch_size = 256
-		lr = 0.001	
+		lr = 0.001
 		num_inputs = Xtrain.shape[1]
 		net, optimizer = init_net(lr, history_signal, num_inputs)
 		epochs = 200
 	elif classifier == 'LSTM':
 		lr = 0.001
 		batch_size = 256
-		epochs = 300	
+		epochs = 300
 		dropout = 0.1
 		#hidden state sizes (from [14])
+		# The dimensionality of the output space of the LSTM layer
 		lstm_hidden_s = 64
-		fc1_hidden_s = 16	
-		num_inputs = Xtrain.shape[1]	
-		net = FPLSTM(lstm_hidden_s,fc1_hidden_s,num_inputs,2,dropout)
+		fc1_hidden_s = 16
+		num_inputs = Xtrain.shape[1]
+		net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
 		net.cuda()
 		optimizer = optim.Adam(net.parameters(), lr=lr)
 	## ---------------------------- ##

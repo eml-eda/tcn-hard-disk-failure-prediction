@@ -1,16 +1,31 @@
 import os
 import pandas as pd
-import datetime
-import numpy as np
+
 model = 'ST3000DM001'
-database = pd.read_pickle('../temp/All_failed_appended_' + model +'.pkl')
-base = pd.DataFrame(database.groupby('serial_number')['date'].apply(list))
-failed = False
-os.makedirs('../data_input', exist_ok=True)
-for i,smart in enumerate(database.keys()[4:]):
-	print('concatenating feature ' + str(i) + '/'+ str(database.keys()[2:].shape[0]))
-	base = pd.concat([base, database.groupby('serial_number')[smart].apply(list)], axis=1)
-if failed == True:
-	base.to_pickle('../data_input/2013_2014_2015_2016_2017_failed_' + model + '.pkl')
-else:
-	base.to_pickle('../data_input/2013_2014_2015_2016_2017_all_' + model + '.pkl')
+
+# Define whether to process only failed data or all data
+failed = False  # This should be set based on your specific criteria or kept as a placeholder
+
+# Load the database
+database = pd.read_pickle(f'../temp/All_failed_appended_{model}.pkl')
+
+# Create grouped object once
+grouped = database.groupby('serial_number')
+
+# Initial base DataFrame using the 'date' column
+base = grouped['date'].apply(list).to_frame()
+
+# Efficient way to concatenate all features by using loop through remaining columns
+for i, smart in enumerate(database.columns[4:], start=1):
+    print(f'concatenating feature {i}/{len(database.columns[4:])}')
+    base[smart] = grouped[smart].apply(list)
+
+# Ensure the directory exists before attempting to save
+output_dir = '../data_input'
+os.makedirs(output_dir, exist_ok=True)
+
+# Define the suffix based on the value of `failed`
+suffix = 'failed' if failed else 'all'
+
+# Save the DataFrame
+base.to_pickle(os.path.join(output_dir, f'2013_2014_2015_2016_2017_{suffix}_{model}.pkl'))

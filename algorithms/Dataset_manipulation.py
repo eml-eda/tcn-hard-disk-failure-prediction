@@ -582,6 +582,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 	temporal = df.loc[:, ['serial_number', 'date', 'failure', 'y', 'val']] 
 	df = df.drop(columns=['serial_number', 'date', 'failure', 'y', 'val'], axis=1)
 	df = pd.DataFrame(mms.fit_transform(df), columns= df.columns, index=df.index)
+	# Add the serial number, date, failure, y, and val columns back to the dataframe, so the window dimension will be 5
 	df[['serial_number', 'date', 'failure', 'y', 'val']] = temporal
 	loaded = 0
 	if windowing == 1:
@@ -703,6 +704,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 			# define train and test sets while taking into account whether the drive failed or not
 			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
+			# Fix the data imbalance using SMOTE
 			rus = SMOTE(1 / resampler_balancing, random_state=42)
 		if oversample_undersample != 2:			
 			if windowing == 1:		
@@ -815,6 +817,9 @@ def feature_selection(df, num_features):
 	for feature in df.columns:
 		if 'raw' in feature:
 			print('T-test for feature {} \r'.format(feature), end="\r")
+			# We use T-test to compare the means of two groups of features
+			# T-statistics: difference between the means of the two groups relative to the variability in the data
+			# p-value: probability of observing a test statistic as extreme as the one computed from the data
 			_, p_val = scipy.stats.ttest_ind(df[df['y'] == 0][feature], df[df['y'] == 1][feature], axis=0, nan_policy='omit')
 			dict1[feature] = p_val
 

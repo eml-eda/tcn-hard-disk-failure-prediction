@@ -16,6 +16,7 @@
     - [Partition Dataset Subflowchart](#partition-dataset-subflowchart)
     - [Random Forest Classification Process](#random-forest-classification-process)
     - [TCN Classification Process](#tcn-classification-process)
+      - [TCN Network Initialization Subflowchart](#tcn-network-initialization-subflowchart)
       - [Iterative Training Process](#iterative-training-process)
       - [TCN Training Subflowchart](#tcn-training-subflowchart)
       - [TCN Testing Subflowchart](#tcn-testing-subflowchart)
@@ -115,7 +116,7 @@ tcn-hard-disk-failure-prediction
 | 184 | Yes | End-to-end error | Count of errors in communication between the drive and the host controller. |
 | 187 | Yes | Reported uncorrectable errors | Count of errors that could not be recovered using hardware ECC (Error-Correcting Code), a type of memory used to correct data corruption errors. |
 | 188 | No | Command timeout | Count of aborted operations due to hard drive timeout. |
-| 189 | High fly writes | Count of times the recording head "flies" outside its normal operating range. |
+| 189 | Yes | High fly writes | Count of times the recording head "flies" outside its normal operating range. |
 | 190 | No | Temperature difference | Difference between current hard drive temperature and optimal temperature of 100°C. |
 | 193 | Yes | Load cycle count | Count of load/unload cycles into head landing zone position. |
 | 197 | Yes | Current pending sectors count | Count of bad sectors that have been found and waiting to be reallocated, because of unrecoverable read errors. |
@@ -202,9 +203,13 @@ graph TD
 
 > **TODO:**
 > 
-> Note 1: We can fix the unbalance of the dataset by using downsampling method to balance the dataset. Specifically, we can use the K-means clustering algorithm to cluster the data and then select the cluster with the least number of data points, then use this cluster to balance the dataset.
+> Note 1: We can fix the unbalance of the dataset by using downsampling method to balance the dataset. Specifically, current code use SMOTE method to balance the dataset with 5 as resampler balance ratio. We can change this value to dynamically balance the dataset based on the number of samples in each class.
 >
-> Note 2: We can use the Genetic Evolution algorithm to ???
+> In conclusion, whether GA or KNN will be better for feature selection depends on your specific use case. If you have a large number of features and you suspect that there may be complex interactions between features, GA might be a better choice. If you have a smaller number of features or computational efficiency is a concern, KNN might be a better choice. It's also worth noting that feature selection is often an iterative and experimental process, and it can be beneficial to try multiple methods and see which one works best for your specific dataset.
+>
+> Note 2: We can use the Genetic Evolution algorithm for feature selection. Paper reference: **Genetic Algorithm for feature selection in enhancing the hard disk failure prediction using artificial neural network**
+>
+> Note 3: 
 
 ### Feature Selection Subflowchart
 
@@ -251,6 +256,74 @@ graph TD
 This sequence is provided by the third-party library (sklearn), so the process is not detailed here.
 
 ### TCN Classification Process
+
+#### TCN Network Initialization Subflowchart
+
+```mermaid
+graph TD
+    A["Input Layer<br/>(num_inputs, history_signal)"] --> B0["Dilated Convolution Block 0"]
+    B0 --> B1["Dilated Convolution Block 1"]
+    B1 --> B2["Dilated Convolution Block 2"]
+    B2 --> FC0["Fully Connected Layer 0"]
+    FC0 --> FC1["Fully Connected Layer 1"]
+    FC1 --> GFC["Final Output Layer<br/>(GwayFC)"]
+
+    subgraph B0["Dilated Convolution Block 0"]
+        b0_tcn0[("Conv1d: 32 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b0_bn0[("BatchNorm1d: 32 features")]
+        b0_relu0[("ReLU")]
+        b0_tcn1[("Conv1d: 64 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b0_pool[("AvgPool1d: Kernel: 3, Stride: 2, Padding: 1")]
+        b0_bn1[("BatchNorm1d: 64 features")]
+        b0_relu1[("ReLU")]
+
+        b0_tcn0 --> b0_bn0 --> b0_relu0 --> b0_tcn1 --> b0_pool --> b0_bn1 --> b0_relu1
+    end
+
+    subgraph B1["Dilated Convolution Block 1"]
+        b1_tcn0[("Conv1d: 64 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b1_bn0[("BatchNorm1d: 64 features")]
+        b1_relu0[("ReLU")]
+        b1_tcn1[("Conv1d: 128 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b1_pool[("AvgPool1d: Kernel: 3, Stride: 2, Padding: 1")]
+        b1_bn1[("BatchNorm1d: 128 features")]
+        b1_relu1[("ReLU")]
+
+        b1_tcn0 --> b1_bn0 --> b1_relu0 --> b1_tcn1 --> b1_pool --> b1_bn1 --> b1_relu1
+    end
+
+    subgraph B2["Dilated Convolution Block 2"]
+        b2_tcn0[("Conv1d: 128 outputs<br/>Kernel: 3, Dilation: 4, Padding: 4")]
+        b2_bn0[("BatchNorm1d: 128 features")]
+        b2_relu0[("ReLU")]
+        b2_tcn1[("Conv1d: 128 outputs<br/>Kernel: 3, Dilation: 4, Padding: 4")]
+        b2_pool[("AvgPool1d: Kernel: 3, Stride: 2, Padding: 1")]
+        b2_bn1[("BatchNorm1d: 128 features")]
+        b2_relu1[("ReLU")]
+
+        b2_tcn0 --> b2_bn0 --> b2_relu0 --> b2_tcn1 --> b2_pool --> b2_bn1 --> b2_relu1
+    end
+
+    subgraph FC0["Fully Connected Layer 0"]
+        fc0[("Linear: 256 units")]
+        fc0_bn[("BatchNorm1d: 256 features")]
+        fc0_relu[("ReLU")]
+        fc0_drop[("Dropout: 50%")]
+
+        fc0 --> fc0_bn --> fc0_relu --> fc0_drop
+    end
+
+    subgraph FC1["Fully Connected Layer 1"]
+        fc1[("Linear: 64 units")]
+        fc1_bn[("BatchNorm1d: 64 features")]
+        fc1_relu[("ReLU")]
+        fc1_drop[("Dropout: 50%")]
+
+        fc1 --> fc1_bn --> fc1_relu --> fc1_drop
+    end
+
+    GFC[("GwayFC: 2 outputs")]
+```
 
 #### Iterative Training Process
 
