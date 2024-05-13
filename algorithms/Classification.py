@@ -145,9 +145,9 @@ if __name__ == '__main__':
 			print('{:.<27}{}%'.format(column, missing))
 		# drop bad HDs
 		bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
-		# y represents the prediction of the failure
-		# val represents the validation of the failure
-		df['y'], df['val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
+		# predict_val represents the prediction value of the failure
+		# validate_val represents the validation value of the failure
+		df['predict_val'], df['validate_val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
 		if ranking is not 'None':
 			df = feature_selection(df, num_features)
 		print('Used features')
@@ -203,9 +203,9 @@ if __name__ == '__main__':
 		Xtrain = feature_extraction(Xtrain)
 		Xtest = feature_extraction(Xtest)
 
-	if classifier == 'RandomForest' and windowing==1:
-		Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1]*Xtrain.shape[2])
-		Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1]*Xtest.shape[2])
+	if classifier == 'RandomForest' and windowing == 1:
+		Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
+		Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
 	try:
 		classification(
@@ -228,5 +228,5 @@ if __name__ == '__main__':
 			X_test=Xtest,
 			Y_test=ytest,
 			classifier=classifier,
-			metric=['RMSE', 'MAE', 'FDR','FAR','F1','recall', 'precision']
+			metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision']
 		)

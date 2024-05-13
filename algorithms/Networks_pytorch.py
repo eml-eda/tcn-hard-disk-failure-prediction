@@ -278,22 +278,20 @@ def report_metrics(Y_test_real, prediction, metric):
     total_1 = len(prediction_1_true)
     total_0 = len(prediction_0_true)
     predicted_correct_1 = sum(prediction_1_true)
+    metrics = {
+        'RMSE': lambda: np.sqrt(mean_squared_error(Y_test_real, prediction)),
+        'MAE': lambda: mean_absolute_error(Y_test_real, prediction),
+        'FDR': lambda: (sum(prediction_1_true) / total_1 * 100),
+        'FAR': lambda: (sum(prediction_0_true) / total_0 * 100),
+        'F1': lambda: f1_score(Y_test_real, prediction),
+        'recall': lambda: recall_score(Y_test_real, prediction),
+        'precision': lambda: precision_score(Y_test_real, prediction),
+    }
+
     for m in metric:
-        if m == 'RMSE':
-            print('SCORE RMSE: %.3f' % np.sqrt(mean_squared_error(Y_test_real,prediction)))
-        elif m == 'MAE':
-            print('SCORE MAE: %.3f' % mean_absolute_error(Y_test_real,prediction))
-        elif m == 'FDR':
-            print('SCORE FDR: %.3f' % (sum(prediction_1_true)/total_1*100))
-        elif m == 'FAR':
-            print('SCORE FAR: %.3f' % (sum(prediction_0_true)/total_0*100))
-        elif m == 'F1':
-            print('SCORE F1: %.3f' % f1_score(Y_test_real,prediction))
-        elif m == 'recall':
-            print('SCORE recall: %.3f' % recall_score(Y_test_real,prediction))
-        elif m == 'precision':
-            print('SCORE precision: %.3f' % precision_score(Y_test_real,prediction))
-    return f1_score(Y_test_real,prediction)
+        if m in metrics:
+            print(f'SCORE {m}: %.3f' % metrics[m]())
+    return f1_score(Y_test_real, prediction)
 
 def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
     """

@@ -445,7 +445,7 @@ def generate_failure_predictions(df, days, window):
     """
     pred_list = np.asarray([])
     valid_list = np.asarray([])
-    i=0
+    i = 0
     for serial_num, inner_df in df.groupby(level=0):
         print('Analizing HD {} number {} \r'.format(serial_num,i), end="\r")
         slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9 
@@ -545,8 +545,8 @@ def under_sample(df, down_factor):
 
 	"""
 	indexes = (
-		df.y
-		.rolling(down_factor) # Create a rolling window of size down_factor over the 'y' column
+		df.predict_val
+		.rolling(down_factor) # Create a rolling window of size down_factor over the 'predict_val' column
 		.max() # Find the maximum value in each window.
 		[((len(df) - 1) % down_factor):-7:down_factor]
 		.index
@@ -579,15 +579,17 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 	"""
 	df.reset_index(inplace=True)
 	mms = MinMaxScaler(feature_range=(0, 1))
-	temporal = df.loc[:, ['serial_number', 'date', 'failure', 'y', 'val']] 
-	df = df.drop(columns=['serial_number', 'date', 'failure', 'y', 'val'], axis=1)
+	# predict_val: Array of predicted failure values, where 1 represents failure and 0 represents non-failure.
+    # validate_val: Array of validation values, where 1 represents the validation period and 0 represents the non-validation period.
+	temporal = df.loc[:, ['serial_number', 'date', 'failure', 'predict_val', 'validate_val']] 
+	df = df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], axis=1)
 	df = pd.DataFrame(mms.fit_transform(df), columns= df.columns, index=df.index)
 	# Add the serial number, date, failure, y, and val columns back to the dataframe, so the window dimension will be 5
-	df[['serial_number', 'date', 'failure', 'y', 'val']] = temporal
+	df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val']] = temporal
 	loaded = 0
 	if windowing == 1:
 		try:
-			windowed_df = pd.read_pickle('../temp/' + model + '_Dataset_windowed_' + str(window_dim) + '_rank_' + rank + '_' + str(num_features) + '_overlap_' + str(overlap) + '.pkl')
+			windowed_df = pd.read_pickle(f'../temp/{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl')
 			print('Loading the windowed dataset')
 			loaded = 1
 			cols = []
@@ -601,20 +603,19 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 					continue
 				cols.append(column)
 			windowed_df.columns = cols
-			windowed_df.sort_index(axis=1,inplace=True)	
+			windowed_df.sort_index(axis=1, inplace=True)	
 		except:
 			print('Windowing the df')
 			#df = df.set_index(['serial_number']).sort_index()
 			windowed_df = df
-			df1 = df
 			cols = []
 			count = {}
 			for column in df.columns:
 				count[column]=1
 			if overlap == 1:
-				for i in np.arange(window_dim-1):
+				for i in np.arange(window_dim - 1):
 					print('Concatenating time - {} \r'.format(i), end="\r")
-					windowed_df = pd.concat([df.shift(i+1),windowed_df],axis=1)
+					windowed_df = pd.concat([df.shift(i+1), windowed_df], axis=1)
 			elif overlap == 0:
 				window_dim_divisors = factors(window_dim)
 				k = 0
@@ -624,7 +625,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 					for i in np.arange(down_factor-1):
 						k+=down_factor_old
 						print('Concatenating time - {} \r'.format(k), end="\r")
-						windowed_df = pd.concat([df.shift(i+1),windowed_df],axis=1)
+						windowed_df = pd.concat([df.shift(i+1),windowed_df], axis=1)
 					down_factor_old = down_factor_old * down_factor
 					indexes = windowed_df.groupby(serials).apply(under_sample, down_factor)
 					windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(),axis=0), :]
@@ -634,22 +635,22 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 				k = 0
 				down_factor_old = 1
 				serials = df.serial_number
-				df_failed = df[df.val==1]
+				df_failed = df[df.validate_val==1]
 				windowed_df_failed = df_failed
 				for i in np.arange(window_dim-1):
 					print('Concatenating time failed - {} \r'.format(i), end="\r")
-					windowed_df_failed = pd.concat([df_failed.shift(i+1),windowed_df_failed],axis=1)
-				for down_factor in window_dim_divisors:					
+					windowed_df_failed = pd.concat([df_failed.shift(i+1), windowed_df_failed], axis=1)
+				for down_factor in window_dim_divisors:
 					for i in np.arange(down_factor-1):
 						k+=down_factor_old
 						print('Concatenating time - {} \r'.format(k), end="\r")
-						windowed_df = pd.concat([df.shift(i+1),windowed_df],axis=1)
+						windowed_df = pd.concat([df.shift(i+1), windowed_df], axis=1)
 					down_factor_old = down_factor_old * down_factor
 					indexes = windowed_df.groupby(serials).apply(under_sample, down_factor)
 					windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(),axis=0), :]
 					df = windowed_df
 				windowed_df = windowed_df.append(windowed_df_failed)
-				windowed_df.reset_index(inplace=True,drop=True)
+				windowed_df.reset_index(inplace=True, drop=True)
 
 			for column in windowed_df.columns:
 				if column in cols:
@@ -658,7 +659,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 					continue
 				cols.append(column)
 			windowed_df.columns = cols
-			windowed_df.sort_index(axis=1,inplace=True)	
+			windowed_df.sort_index(axis=1, inplace=True)	
 			df = windowed_df
 			print('C')
 	print('Creating training and test dataset')
@@ -667,39 +668,32 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 			df = windowed_df
 		else:
 			if windowing == 1:
-				df['y'] = df['y_{}'.format(count['y']-1)]
+				df['predict_val'] = df['predict_val_{}'.format(count['predict_val']-1)]
 				for i in np.arange(window_dim-1): 
 					print('Dropping useless features of time - {} \r'.format(i), end="\r")
-					df = df.drop(columns = ['serial_number_{}'.format(i+1), 'date_{}'.format(i+1),'failure_{}'.format(i+1), 'y_{}'.format(i+1), 'val_{}'.format(i+1)], axis=1)
+					columns_to_drop = [f'{name}_{i+1}' for name in ['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
+					df = df.drop(columns=columns_to_drop, axis=1)
 				df = df.dropna()
 				df = df.set_index(['serial_number', 'date']).sort_index()
-				k=0
+				k = 0
 				for serial_num, inner_df in df.groupby(level=0):
 					print('Computing index of invalid windows of HD number {} \r'.format(k), end="\r")
-					k+=1
+					k += 1
 					#inner_df = inner_df.reset_index()
-					if overlap==1:
-						if k ==1:
-							indexes = inner_df[:window_dim].index
-						else:
-							indexes = indexes.append(inner_df[:window_dim].index)
-					else:
-						if k ==1:
-							indexes = inner_df[:1].index
-						else:
-							indexes = indexes.append(inner_df[:1].index)													
+					index_to_append = inner_df[:window_dim].index if overlap == 1 else inner_df[:1].index
+					indexes = indexes.append(index_to_append) if k != 1 else index_to_append
 					#temp_df = pd.concat([temp_df, inner_df[window_dim:]], axis=0)
 				print('C')
 				print('Dropping invalid windows ')
 				df = df.drop(indexes)
 				df = df.reset_index()
-				df.to_pickle('../temp/' + model +'_Dataset_windowed_'+ str(window_dim) +'_rank_'+rank + '_' + str(num_features)+ '_overlap_'+str(overlap)+'.pkl')
-		y = df['y']
-		df = df.drop(columns = ['serial_number', 'date','failure', 'y','val'], axis=1)
+				df.to_pickle(f'../temp/{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl')
+		y = df['predict_val']
+		df = df.drop(columns = ['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], axis=1)
 		X = df.values
 		if windowing == 1:
 			X = arrays_to_matrix(X, window_dim)
-		Xtrain, Xtest, ytrain, ytest = train_test_split(X,y,stratify=y,test_size=test_train_perc, random_state=42)
+		Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=test_train_perc, random_state=42)
 		if oversample_undersample == 0:
 			# define train and test sets while taking into account whether the drive failed or not
 			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
@@ -726,7 +720,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 		np.random.seed(0)
 		df = df.set_index(['serial_number', 'date']).sort_index()
 		if windowing == 1:
-			failed = [h[0] for h in list(df[df.y == 1].index)]
+			failed = [h[0] for h in list(df[df.predict_val == 1].index)]
 		else:
 			failed = [h[0] for h in list(df[df.failure == 1].index)]
 		failed = list(set(failed)) # unique list of all drives that failed
@@ -746,32 +740,32 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 		df_test = df.loc[test, :].sort_index()
 		df_train.reset_index(inplace=True)
 		df_test.reset_index(inplace=True)
-		ytrain = df_train.y
-		ytest = df_test.y
-		df_train = df_train.drop(columns = ['serial_number', 'date','failure', 'y'], axis=1)
-		df_test = df_test.drop(columns = ['serial_number', 'date','failure', 'y'], axis=1)
+		ytrain = df_train.predict_val
+		ytest = df_test.predict_val
+		df_train = df_train.drop(columns = ['serial_number', 'date', 'failure', 'predict_val'], axis=1)
+		df_test = df_test.drop(columns = ['serial_number', 'date', 'failure', 'predict_val'], axis=1)
 		Xtrain = df_train.values
 		Xtest = df_test.values
 		if windowing == 1:
 			Xtrain = arrays_to_matrix(Xtrain)
 			Xtest = arrays_to_matrix(Xtest)
 		if oversample_undersample == 0:
-			rus = RandomUnderSampler(1/resampler_balancing,random_state=42)
+			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
-			rus = SMOTE(1/resampler_balancing,random_state=42)
+			rus = SMOTE(1 / resampler_balancing, random_state=42)
 		dim1 = Xtrain.shape[1]
 		dim2 = Xtrain.shape[2]
-		Xtrain = Xtrain.reshape(Xtrain.shape[0],Xtrain.shape[1]*Xtrain.shape[2])
+		Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
 		if windowing == 1:		
 			Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain.astype(int))
-			Xtrain = Xtrain.reshape(Xtrain.shape[0],dim1,dim2)
+			Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
 		else:
 			Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
 	else:
 		df = df.set_index(['date']).sort_index()
-		y = df.y
-		df = df.drop(columns = ['serial_number','failure', 'y'], axis=1)
-		X = df.values
+		y = df.predict_val
+		df = df.drop(columns = ['serial_number', 'failure', 'predict_val'], axis=1)
+		X = df.values  # Returns a numpy array
 		if windowing == 1:
 			Xtrain = X[:int(X.shape[0]*(1-test_train_perc)),:,:]
 			Xtest = X[int(X.shape[0]*(1-test_train_perc)):,:,:]
@@ -820,7 +814,7 @@ def feature_selection(df, num_features):
 			# We use T-test to compare the means of two groups of features
 			# T-statistics: difference between the means of the two groups relative to the variability in the data
 			# p-value: probability of observing a test statistic as extreme as the one computed from the data
-			_, p_val = scipy.stats.ttest_ind(df[df['y'] == 0][feature], df[df['y'] == 1][feature], axis=0, nan_policy='omit')
+			_, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
 			dict1[feature] = p_val
 
 	print('T')
@@ -875,7 +869,7 @@ if __name__ == '__main__':
 	# drop bad HDs
 	
 	bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=30)
-	df['y'] = generate_failure_predictions(df, days=7) # define RUL piecewise
+	df['predict_val'] = generate_failure_predictions(df, days=7) # define RUL piecewise
 	## -------- ##
 	# random: stratified without keeping timw
 	# hdd --> separate different hdd
