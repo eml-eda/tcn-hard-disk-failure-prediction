@@ -131,13 +131,14 @@ if __name__ == '__main__':
 	ranking = 'Ok'
 	num_features = 18
 	overlap = 1
+
 	try:
-		df = pd.read_pickle('../temp/' + model +'_Dataset_windowed_' + str(history_signal) +'_rank_'+ranking + '_' +str(num_features)+ '_overlap_'+str(overlap)+'.pkl')
+		df = pd.read_pickle(f'../temp/{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
 	except:
 		if ranking == 'None':
-			df = import_data(years= years, model = model, name = 'iSTEP', features=features)
+			df = import_data(years=years, model=model, name='iSTEP', features=features)
 		else:
-			df = import_data(years = years, model = model, name = 'iSTEP')
+			df = import_data(years=years, model=model, name='iSTEP')
 		print(df.head())
 		for column in list(df):
 			missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
@@ -146,7 +147,7 @@ if __name__ == '__main__':
 		bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
 		# y represents the prediction of the failure
 		# val represents the validation of the failure
-		df['y'], df['val'] = Y_target(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
+		df['y'], df['val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
 		if ranking is not 'None':
 			df = feature_selection(df, num_features)
 		print('Used features')
@@ -156,7 +157,21 @@ if __name__ == '__main__':
 		# random: stratified without keeping timw
 		# hdd --> separate different hdd (need FIXes)
 		# temporal --> separate by time (need FIXes)
-	Xtrain, Xtest, ytrain, ytest = dataset_partitioning(df, model, overlap=overlap, rank=ranking, num_features=num_features, technique='random', test_train_perc=test_train_perc, windowing=windowing, window_dim=history_signal, resampler_balancing=balancing_normal_failed, oversample_undersample=oversample_undersample)
+
+	Xtrain, Xtest, ytrain, ytest = dataset_partitioning(
+		df,
+		model,
+		overlap=overlap,
+		rank=ranking,
+		num_features=num_features,
+		technique='random',
+		test_train_perc=test_train_perc,
+		windowing=windowing,
+		window_dim=history_signal,
+		resampler_balancing=balancing_normal_failed,
+		oversample_undersample=oversample_undersample
+	)
+
 	####### CLASSIFIER PARAMETERS #######
 	if classifier == 'RandomForest':
 		pass
@@ -179,16 +194,39 @@ if __name__ == '__main__':
 		num_inputs = Xtrain.shape[1]
 		net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
 		net.cuda()
+		# We use the Adam optimizer, a method for Stochastic Optimization
 		optimizer = optim.Adam(net.parameters(), lr=lr)
 	## ---------------------------- ##
+
 	if perform_features_extraction == True:
+		# Extract features for the train and test set
 		Xtrain = feature_extraction(Xtrain)
 		Xtest = feature_extraction(Xtest)
+
 	if classifier == 'RandomForest' and windowing==1:
 		Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1]*Xtrain.shape[2])
 		Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1]*Xtest.shape[2])
 
 	try:
-		classification(X_train = Xtrain, Y_train = ytrain, X_test = Xtest, Y_test = ytest, classifier = classifier, metric = ['RMSE', 'MAE', 'FDR','FAR','F1','recall', 'precision'], net = net, optimizer = optimizer, epochs = epochs, batch_size = batch_size, lr= lr)
+		classification(
+			X_train=Xtrain,
+			Y_train=ytrain,
+			X_test=Xtest,
+			Y_test=ytest,
+			classifier=classifier,
+			metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
+			net=net,
+			optimizer=optimizer,
+			epochs=epochs,
+			batch_size=batch_size,
+			lr=lr
+		)
 	except:
-		classification(X_train = Xtrain, Y_train = ytrain, X_test = Xtest, Y_test = ytest, classifier = classifier, metric = ['RMSE', 'MAE', 'FDR','FAR','F1','recall', 'precision'])
+		classification(
+			X_train=Xtrain,
+			Y_train=ytrain,
+			X_test=Xtest,
+			Y_test=ytest,
+			classifier=classifier,
+			metric=['RMSE', 'MAE', 'FDR','FAR','F1','recall', 'precision']
+		)

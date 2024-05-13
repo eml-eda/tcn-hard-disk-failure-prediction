@@ -165,6 +165,8 @@ tcn-hard-disk-failure-prediction
 
 ### Main Classification Process
 
+The main function of the code is to perform hard disk failure prediction using various classification algorithms. The process involves the following steps:
+
 ```mermaid
 graph TD
     A[Start]
@@ -213,6 +215,8 @@ graph TD
 
 ### Feature Selection Subflowchart
 
+The main purpose of the feature selection is to select the top 'num_features' features from the given dataframe based on statistical tests., which involves the following steps:
+
 ```mermaid
 graph TD
     A[Start] --> B[Define empty lists and dictionary]
@@ -229,6 +233,8 @@ graph TD
 ```
 
 ### Partition Dataset Subflowchart
+
+The main purpose of the dataset partitioning process is to partition the dataset into training and test sets, which involves the following steps:
 
 ```mermaid
 graph TD
@@ -259,20 +265,22 @@ This sequence is provided by the third-party library (sklearn), so the process i
 
 #### TCN Network Initialization Subflowchart
 
+The main purpose of the TCN network initialization process is to initialize the neural network model and optimizer, which involves the following steps:
+
 ```mermaid
 graph TD
-    A["Input Layer<br/>(num_inputs, history_signal)"] --> B0["Dilated Convolution Block 0"]
+    A["Input Layer<br>(num_inputs, history_signal)"] --> B0["Dilated Convolution Block 0"]
     B0 --> B1["Dilated Convolution Block 1"]
     B1 --> B2["Dilated Convolution Block 2"]
     B2 --> FC0["Fully Connected Layer 0"]
     FC0 --> FC1["Fully Connected Layer 1"]
-    FC1 --> GFC["Final Output Layer<br/>(GwayFC)"]
+    FC1 --> GFC["Final Output Layer<br>(GwayFC)"]
 
     subgraph B0["Dilated Convolution Block 0"]
-        b0_tcn0[("Conv1d: 32 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b0_tcn0[("Conv1d: 32 outputs<br>Kernel: 3, Dilation: 2, Padding: 2")]
         b0_bn0[("BatchNorm1d: 32 features")]
         b0_relu0[("ReLU")]
-        b0_tcn1[("Conv1d: 64 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b0_tcn1[("Conv1d: 64 outputs<br>Kernel: 3, Dilation: 2, Padding: 2")]
         b0_pool[("AvgPool1d: Kernel: 3, Stride: 2, Padding: 1")]
         b0_bn1[("BatchNorm1d: 64 features")]
         b0_relu1[("ReLU")]
@@ -281,10 +289,10 @@ graph TD
     end
 
     subgraph B1["Dilated Convolution Block 1"]
-        b1_tcn0[("Conv1d: 64 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b1_tcn0[("Conv1d: 64 outputs<br>Kernel: 3, Dilation: 2, Padding: 2")]
         b1_bn0[("BatchNorm1d: 64 features")]
         b1_relu0[("ReLU")]
-        b1_tcn1[("Conv1d: 128 outputs<br/>Kernel: 3, Dilation: 2, Padding: 2")]
+        b1_tcn1[("Conv1d: 128 outputs<br>Kernel: 3, Dilation: 2, Padding: 2")]
         b1_pool[("AvgPool1d: Kernel: 3, Stride: 2, Padding: 1")]
         b1_bn1[("BatchNorm1d: 128 features")]
         b1_relu1[("ReLU")]
@@ -293,10 +301,10 @@ graph TD
     end
 
     subgraph B2["Dilated Convolution Block 2"]
-        b2_tcn0[("Conv1d: 128 outputs<br/>Kernel: 3, Dilation: 4, Padding: 4")]
+        b2_tcn0[("Conv1d: 128 outputs<br>Kernel: 3, Dilation: 4, Padding: 4")]
         b2_bn0[("BatchNorm1d: 128 features")]
         b2_relu0[("ReLU")]
-        b2_tcn1[("Conv1d: 128 outputs<br/>Kernel: 3, Dilation: 4, Padding: 4")]
+        b2_tcn1[("Conv1d: 128 outputs<br>Kernel: 3, Dilation: 4, Padding: 4")]
         b2_pool[("AvgPool1d: Kernel: 3, Stride: 2, Padding: 1")]
         b2_bn1[("BatchNorm1d: 128 features")]
         b2_relu1[("ReLU")]
@@ -327,6 +335,8 @@ graph TD
 
 #### Iterative Training Process
 
+The main purpose of the iterative training process is to train and validate a neural network model, which involves the following steps:
+
 ```mermaid
 graph TD
     A[Start]
@@ -355,6 +365,8 @@ graph TD
 ```
 
 #### TCN Training Subflowchart
+
+The main purpose of the TCN training process is to train the model using the given training data and parameters, which involves the following steps:
 
 ```mermaid
 graph TD
@@ -385,6 +397,8 @@ graph TD
 ```
 
 #### TCN Testing Subflowchart
+
+The main purpose of the TCN testing process is to evaluate the model on the test dataset and calculate various metrics, which involves the following steps:
 
 ```mermaid
 graph TD
@@ -430,6 +444,8 @@ graph TD
 ### LSTM Classification Process
 
 #### Iterative Training Process
+
+The main purpose of the iterative training process is to train and validate the LSTM network model, which involves the following steps:
 
 ```mermaid
 graph TD
@@ -480,6 +496,8 @@ graph TD
 ```
 
 #### LSTM Training Subflowchart
+
+The main purpose of the LSTM training process is to train the model using the given training data and parameters, which involves the following steps:
 
 ```mermaid
 graph TD
@@ -533,6 +551,8 @@ graph TD
 ```
 
 #### LSTM Testing Subflowchart
+
+The main purpose of the LSTM testing process is to evaluate the model on the test dataset and calculate various metrics, which involves the following steps:
 
 ```mermaid
 graph TD

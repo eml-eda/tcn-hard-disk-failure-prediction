@@ -11,6 +11,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
 from sklearn.utils import shuffle
 import math
+from collections import deque
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
 class FPLSTMDataset(torch.utils.data.Dataset):
@@ -323,6 +324,7 @@ def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
     weights = [1.7, 0.3]
     # we use the GPU to train
     class_weights = torch.FloatTensor(weights).cuda()
+    # we use the CrossEntropyLoss as loss function
     criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
     predictions = np.ndarray(Xtrain.shape[0])
     #criterion = torch.nn.CrossEntropyLoss()
@@ -332,15 +334,23 @@ def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
         target = ytrain[(batch_idx * batchsize):((batch_idx + 1) * batchsize)]
         
         if torch.cuda.is_available():
+            # Convert the data and target to tensors and move them to the GPU
             data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
         else:
+            # Convert the data and target to tensors
             data, target = torch.Tensor(data), torch.Tensor(target)
-        
+
+        # Wrap the data and target in a Variable to allow automatic differentiation  
         data, target = Variable(data), Variable(target)
+        # Zero the gradients since PyTorch accumulates gradients on subsequent backward passes
         optimizer.zero_grad()
+        # Get the output predictions from the model
         output = model(data)
+        # Calculate the loss between the predictions and the target
         loss = criterion(output, target.long())
+        # Perform backpropagation to calculate the gradients of the loss with respect to the model parameters
         loss.backward()
+        # Update the model parameters using the gradients and the optimizer
         optimizer.step()
         pred = output.data.max(1, keepdim=True)[1]
         predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
@@ -403,7 +413,7 @@ def test(Xtest, ytest, model):
 
 def net_train_validate(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, batch_size, lr):
     """
-    Train and validate a neural network model.
+    Train and validate a neural network model using TCN architecture.
 
     Args:
         net (torch.nn.Module): The neural network model.
@@ -420,17 +430,18 @@ def net_train_validate(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, bat
         None
     """
     ytest = ytest.values
-    F1_list = np.ndarray(10)
-    i = 0
+    # Use a deque to store the last 5 F1 scores to check for convergence
+    F1_list = deque(maxlen=5)
+
     for epoch in range(1, epochs):
         # the train include also the test inside
         F1 = train(epoch, Xtrain, ytrain, batch_size, optimizer, net, Xtest, ytest)
-        F1_list[i] = F1
-        i += 1
-        if i == 5:
-            i = 0
-        if F1_list[0] != 0 and (max(F1_list) - min(F1_list)) == 0:
+        F1_list.append(F1)
+
+        if len(F1_list) == 5 and len(set(F1_list)) == 1:
             print("Exited because last 5 epochs has constant F1")
+            break
+
         if epoch % 20 == 0:
             lr /= 10
             for param_group in optimizer.param_groups:

@@ -34,7 +34,7 @@ for year in years:
             model_chosen = df[df['model'] == model]
             relevant_rows = model_chosen[model_chosen['serial_number'].isin(failed)]
 
-            # Drop unnecessary columns
+            # Drop unnecessary columns since the following columns are not standard for all models
             drop_columns = [col for col in relevant_rows if 'smart_' in col and int(col.split('_')[1]) in {22, 220, 222, 224, 226}]
             relevant_rows.drop(columns=drop_columns, errors='ignore', inplace=True)
 

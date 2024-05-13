@@ -431,7 +431,7 @@ def interpolate_ts(df, method='linear'):
     
     return df
 
-def Y_target(df, days, window):
+def generate_failure_predictions(df, days, window):
     """
     Generate target arrays for binary classification based on the failure column in the input dataframe.
 
@@ -449,7 +449,7 @@ def Y_target(df, days, window):
     for serial_num, inner_df in df.groupby(level=0):
         print('Analizing HD {} number {} \r'.format(serial_num,i), end="\r")
         slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9 
-        i+=1
+        i += 1
         if inner_df.failure.max() == 1:
             predictions = np.concatenate((np.zeros(slicer_val-days), np.ones(days)))
             valid = np.concatenate((np.zeros(slicer_val-days-window), np.ones(days+window)))
@@ -875,7 +875,7 @@ if __name__ == '__main__':
 	# drop bad HDs
 	
 	bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=30)
-	df['y'] = Y_target(df, days=7) # define RUL piecewise
+	df['y'] = generate_failure_predictions(df, days=7) # define RUL piecewise
 	## -------- ##
 	# random: stratified without keeping timw
 	# hdd --> separate different hdd
