@@ -340,11 +340,17 @@ def import_data(years, model,name, **args):
 		cwd = os.getcwd()
 		df = pd.DataFrame()
 		for y in years:
-			print('Analizing year {} \r'.format(y), end="\r")
+			print('Analyzing year {} \r'.format(y), end="\r")
 			try:
-				data = pd.concat([pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])[pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date']).model == model] for f in glob.glob(cwd + '/../../HDD_dataset/' + y + '/*.csv')], ignore_index=True)
+				data = pd.concat([
+					(df := pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date']))[df.model == model]
+					for f in glob.glob(cwd + '/../../HDD_dataset/' + y + '/*.csv')
+				], ignore_index=True)
 			except:
-				data = pd.concat([pd.read_csv(f, header=0, parse_dates=['date'])[pd.read_csv(f, header=0, parse_dates=['date']).model == model] for f in glob.glob(cwd + '/../../HDD_dataset/' + y + '/*.csv')], ignore_index=True)
+				data = pd.concat([
+					(df := pd.read_csv(f, header=0, parse_dates=['date']))[df.model == model]
+					for f in glob.glob(cwd + '/../../HDD_dataset/' + y + '/*.csv')
+				], ignore_index=True)
 						#data = data[data.model == model]
 			data.drop(columns=['model'], inplace=True)
 			data.failure = data.failure.astype('int')
@@ -394,7 +400,7 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
 	bad_hds = set(bad_missing_hds + bad_power_hds)
 	hds_remove = len(bad_hds)
 	hds_total = len(df.reset_index().serial_number.unique())
-	print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove/hds_total * 100, 2)))
+	print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove / hds_total * 100, 2)))
 
 	df = df.drop(bad_hds, axis=0)
 
