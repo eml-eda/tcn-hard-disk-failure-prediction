@@ -317,7 +317,7 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
 
 	return dataset
 
-def import_data(years, model,name, **args):
+def import_data(years, model, name, **args):
 	""" Import hard drive data from csvs on disk.
 	
 	:param quarters: List of quarters to import (e.g., 1Q19, 4Q18, 3Q18, etc.)
