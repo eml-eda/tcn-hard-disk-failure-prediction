@@ -1,0 +1,7 @@
+pandas
+numpy
+scipy
+matplotlib
+argparse
+sklearn
+pickle-mixin
