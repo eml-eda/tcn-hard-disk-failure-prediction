@@ -3,5 +3,5 @@ numpy
 scipy
 matplotlib
 argparse
-sklearn
+scikit-sklearn
 pickle-mixin

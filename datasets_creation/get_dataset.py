@@ -5,7 +5,8 @@ import zipfile
 
 base_url = 'https://f001.backblazeb2.com/file/Backblaze-Hard-Drive-Data/'
 base_path = os.path.dirname('../../HDD_dataset/')
-years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+# years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+years = ['2018','2019']
 
 # zips contain different directory names or no directory at all, which causes
 # unavoidable "spaghettiness" in the code
@@ -27,7 +28,8 @@ suffixes = {
         'data_Q4_2018.zip': 'data_Q4_2018',
         'data_Q1_2019.zip': 'drive_stats_2019_Q1',
         'data_Q2_2019.zip': 'data_Q2_2019',
-        'data_Q3_2019.zip': 'data_Q3_2019'}
+        'data_Q3_2019.zip': 'data_Q3_2019'
+        }
 
 
 def main(years, base_path):
