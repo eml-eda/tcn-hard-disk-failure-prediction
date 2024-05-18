@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-import datetime
+# import datetime
 from glob import glob
 
 # Define paths and directories
@@ -15,7 +15,7 @@ year_dirs = {str(year): os.path.join(base_path, str(year)) for year in range(201
 years = [str(year) for year in range(2013, 2018)]
 model = 'ST3000DM001'
 list_failed = []
-failed = True
+failed = False
 
 # Create temp directory
 temp_dir = os.path.join(script_dir, '..', 'temp')

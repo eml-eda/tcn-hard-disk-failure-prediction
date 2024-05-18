@@ -7,7 +7,7 @@ model = 'ST3000DM001'
 failed = False  # This should be set based on your specific criteria or kept as a placeholder
 
 # Load the database
-database = pd.read_pickle(f'../temp/All_failed_appended_{model}.pkl')
+database = pd.read_pickle(os.path.join('..', 'temp', f'All_failed_appended_{model}.pkl'))
 
 # Create grouped object once
 grouped = database.groupby('serial_number')
@@ -21,7 +21,7 @@ for i, smart in enumerate(database.columns[4:], start=1):
     base[smart] = grouped[smart].apply(list)
 
 # Ensure the directory exists before attempting to save
-output_dir = '../data_input'
+output_dir = os.path.join('..', 'data_input')
 os.makedirs(output_dir, exist_ok=True)
 
 # Define the suffix based on the value of `failed`

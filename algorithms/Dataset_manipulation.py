@@ -1,23 +1,22 @@
 import pandas as pd
-import datetime
+# import datetime
 import numpy as np
 from numpy import *
 import math
 import pickle
-from scipy.stats.stats import pearsonr
-import sys
-from sklearn.metrics import mean_squared_error, mean_absolute_error
-from sklearn.utils import shuffle
+# from scipy.stats.stats import pearsonr
+# import sys
+# from sklearn.utils import shuffle
 import os
 import matplotlib.pyplot as plt
 import glob
-from sklearn.feature_selection import f_regression
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import LinearRegression
+# from sklearn.feature_selection import f_regression
+from sklearn.preprocessing import MinMaxScaler
+# from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+# from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+# from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
+# from sklearn.linear_model import LinearRegression
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
 import scipy
@@ -116,207 +115,142 @@ def pandas_to_3dmatrix(read_dir, model, years, dataset_raw):
 		FileNotFoundError: If the matrix file is not found.
 
 	"""
-	join_years = '_'
-	for year in years:
-		join_years = join_years + year + '_'
-	name_file = 'Matrix_Dataset' + join_years +'.pkl'
-	try:
-		with open(os.path.join(read_dir,name_file), 'rb') as handle:
-			dataset = pickle.load(handle)
-		print('Matrix 3d {} already present'.format(name_file))
-	except FileNotFoundError:
-		print('Creating matrix 3d {}'.format(name_file))
-		row_valids = []
-		rows_dim = len(dataset_raw['failure'])
-		feat_dim=len(dataset_raw.keys()[2:])
-		### removing HDD with some features always nan
-		for k in np.arange(rows_dim):
-			row = dataset_raw.iloc[k]
-			invalid = False
-			for i in np.arange(2,len(row.keys())):
-				if len(row[i]) == sum(math.isnan(x) for x in row[i]):
-					invalid=True
-			if invalid == True:
-				row_valids.append(False)
-			else:
-				row_valids.append(True)
-		dataset_raw = dataset_raw[row_valids]
-		rows_dim = len(dataset_raw['failure'])
-		# computing Max time stamps in an hdd
-		max_len = 0
-		print('Computing maximum number of timestamps of one hdd')
-		for k in np.arange(rows_dim):
-			row = dataset_raw.iloc[k]
-			if max_len < len(row['date']):
-				max_len =len(row['date'])
-		matrix_3d = []
-		for k in np.arange(rows_dim):
-			row = dataset_raw.iloc[k]
-			print('Analizing HD number {} \r'.format(k), end="\r")
-			row = dataset_raw.iloc[k]
-			hd = []
-			for j,features in enumerate(row.keys()[1:]):
-				hd.append(row[features])
-			hd = np.asarray(hd)
-			hd_padded = np.concatenate((hd,np.ones((hd.shape[0],max_len-hd.shape[1]))*2),axis=1)
-			matrix_3d.append(hd_padded.T)
-		matrix_3d = np.asarray(matrix_3d)
-
-		## for debugging
-		good = 0
-		failed = 0
-		disk_type = []
-		for k in np.arange(matrix_3d.shape[0]):
-			row = matrix_3d[k,:,0]
-			try: 
-				np.where(row==1)[0][0]
-				failed+=1
-			except:
-				good +=1
-		print('There are {} disk goods and {} failed in the dataset'.format(good,failed))    
-		dataset = {'matrix': matrix_3d}
-		with open(os.path.join(read_dir,name_file), 'wb') as handle:
-			pickle.dump(dataset,handle)
-	return dataset
-
-def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7, resampler_balancing = 5, oversample_undersample = 0):
-	"""
-	Convert a 3D matrix to datasets for training and testing.
-
-	Args:
-		matrix (ndarray): The 3D matrix containing the data.
-		window (int, optional): The size of the sliding window. Defaults to 1.
-		divide_hdd (int, optional): Flag to divide the HDDs. Defaults to 1.
-		training_percentage (float, optional): The percentage of data to use for training. Defaults to 0.7.
-		resampler_balancing (int, optional): The resampler balancing factor. Defaults to 5.
-		oversample_undersample (int, optional): The type of resampling to use. Defaults to 0.
-
-	Returns:
-		dict: A dictionary containing the training and testing datasets.
-
-	Raises:
-		FileNotFoundError: If the dataset file is not found.
-
-	"""
-
-	#np.random.shuffle(matrix)
-	name_file = 'Final_Dataset.pkl'
-	read_dir = os.path.dirname('../data_input/')
+	join_years = '_'.join(years) + '_'
+	name_file = f'Matrix_Dataset_{join_years}.pkl'
 
 	try:
 		with open(os.path.join(read_dir, name_file), 'rb') as handle:
 			dataset = pickle.load(handle)
-		print('Dataset {} already present'.format(name_file))
+		print('Matrix 3d {} already present'.format(name_file))
 	except FileNotFoundError:
-		X_matrix = matrix[:, :, :]
-		Y_matrix = np.zeros(X_matrix.shape[0])
-		for hdd in np.arange(X_matrix.shape[0]):
-			try:
-				np.where(X_matrix[hdd, :, 0] == 1)[0][0]
-				Y_matrix[hdd] = 1
-			except:
-				pass
-		print('Failed hard disk = {}'.format(sum(Y_matrix)))
+		print(f'Creating matrix 3D {name_file}')
+		valid_rows_mask = []
 
-		if divide_hdd == 1:
-			# Creating dataset per window.
-			X_train_hd, X_test_hd, y_train_hd, y_test_hd = train_test_split(X_matrix, Y_matrix, stratify=Y_matrix,
-																			test_size=1 - training_percentage)
+		# rows_dim = len(dataset_raw['failure'])
+		# feat_dim = len(dataset_raw.columns) - 2
 
-			# Training set creation
-			first = 1
-			print('Processing training dataset')
-			for hdd_number in np.arange(y_train_hd.shape[0]):
-				print('Analyzing HD number {} \r'.format(hdd_number), end="\r")
-				if y_train_hd[hdd_number] == 1:
-					temp = X_train_hd[hdd_number, :np.where(X_train_hd[hdd_number, :, 0] == 1)[0][0], 1:]
-					if first:
-						X_train = temp
-						Y_train = np.concatenate((np.zeros(temp.shape[0] - 7), np.ones(7)))
-						first = 0
-					else:
-						X_train = np.concatenate((X_train, temp))
-						try:
-							Y_train = np.concatenate((Y_train, np.zeros(temp.shape[0] - 7), np.ones(7)))
-						except:
-							Y_train = np.concatenate((Y_train, np.ones(temp.shape[0])))
-				else:
-					try:
-						temp = X_train_hd[hdd_number, :(np.where(X_train_hd[hdd_number, :, 0] == 2)[0][0] - 1 - 7), 1:]
-					except:
-						temp = X_train_hd[hdd_number, :-7, 1:]
-					if first:
-						X_train = temp
-						Y_train = (np.zeros(temp.shape[0]))
-						first = 0
-					else:
-						X_train = np.concatenate((X_train, temp))
-						try:
-							Y_train = np.concatenate((Y_train, np.zeros(temp.shape[0])))
-						except:
-							import pdb;
-							pdb.set_trace()
+        # Remove HDDs with some features always NaN
+		for _, row in dataset_raw.iterrows():
+			valid = not any(len(col) == sum(math.isnan(x) for x in col) for col in row[2:])
+			valid_rows_mask.append(valid)
 
-			# Test set creation
-			first = 1
-			print('Processing test dataset')
-			for hdd_number in np.arange(y_test_hd.shape[0]):
-				print('Analyzing HD number {} \r'.format(hdd_number), end="\r")
-				if y_test_hd[hdd_number] == 1:
-					temp = X_test_hd[hdd_number, :np.where(X_test_hd[hdd_number, :, 0] == 1)[0][0], 1:]
-					if first:
-						X_test = temp
-						Y_test = np.concatenate((np.zeros(temp.shape[0] - 7), np.ones(7)))
-						HD_number_test = np.zeros(temp.shape[0])
-						first = 0
-					else:
-						X_test = np.concatenate((X_test, temp))
-						HD_number_test = np.concatenate((HD_number_test, np.ones(temp.shape[0]) * hdd_number))
-						try:
-							Y_test = np.concatenate((Y_test, np.zeros(temp.shape[0] - 7), np.ones(7)))
-						except:
-							Y_test = np.concatenate((Y_test, np.ones(temp.shape[0])))
-				else:
-					try:
-						temp = X_test_hd[hdd_number, :(np.where(X_test_hd[hdd_number, :, 0] == 2)[0][0] - 1 - 7), 1:]
-					except:
-						temp = X_test_hd[hdd_number, :-7, 1:]
-					if first:
-						X_test = temp
-						Y_test = (np.zeros(temp.shape[0]))
-						HD_number_test = np.zeros(temp.shape[0])
-						first = 0
-					else:
-						X_test = np.concatenate((X_test, temp))
-						HD_number_test = np.concatenate((HD_number_test, np.ones(temp.shape[0]) * hdd_number))
-						try:
-							Y_test = np.concatenate((Y_test, np.zeros(temp.shape[0])))
-						except:
-							import pdb;
-							pdb.set_trace()
+		dataset_raw = dataset_raw[valid_rows_mask]
+		# rows_dim = len(dataset_raw['failure'])
 
-			# Remove rows with NaN values
-			Y_train = Y_train[~np.isnan(X_train).any(axis=1)]
-			X_train = X_train[~np.isnan(X_train).any(axis=1)]
-			Y_test = Y_test[~np.isnan(X_test).any(axis=1)]
-			HD_number_test = HD_number_test[~np.isnan(X_test).any(axis=1)]
-			X_test = X_test[~np.isnan(X_test).any(axis=1)]
+        # Compute max timestamps in an HDD
+		print('Computing maximum number of timestamps of one HDD')
+		max_len = max(len(row['date']) for _, row in dataset_raw.iterrows())
 
-			# Resampling
-			if oversample_undersample == 0:
-				# Random state is set to 42 for reproducibility
-				rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
+		matrix_3d = []
+		for k, row in dataset_raw.iterrows():
+			print(f'Analyzing HD number {k}', end="\r")
+			hd = [row[feature] for feature in row.index[1:]]
+			hd = np.asarray(hd)
+			hd_padded = np.pad(hd, ((0, 0), (0, max_len - hd.shape[1])), mode='constant', constant_values=2)
+			matrix_3d.append(hd_padded.T)
+
+		matrix_3d = np.asarray(matrix_3d)
+
+        # Debugging information
+		good, failed = 0, 0
+		for row in matrix_3d[:, :, 0]:
+			if 1 in row:
+				failed += 1
 			else:
-				rus = SMOTE(1 / resampler_balancing, random_state=42)
-			X_train, Y_train = rus.fit_resample(X_train, Y_train)
+				good += 1
 
-			dataset = {'X_train': X_train, 'Y_train': Y_train, 'X_test': X_test, 'Y_test': Y_test,
-					   'HDn_test': HD_number_test}
+		print(f'There are {good} good disks and {failed} failed disks in the dataset')
 
-			with open(os.path.join(read_dir, name_file), 'wb') as handle:
-				pickle.dump(dataset, handle)
+		dataset = {'matrix': matrix_3d}
+		with open(os.path.join(read_dir, name_file), 'wb') as handle:
+			pickle.dump(dataset, handle)
 
 	return dataset
+
+def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7, resampler_balancing=5, oversample_undersample=0):
+    """
+    Convert a 3D matrix to datasets for training and testing.
+
+    Args:
+        matrix (ndarray): The 3D matrix containing the data.
+        window (int, optional): The size of the sliding window. Defaults to 1.
+        divide_hdd (int, optional): Flag to divide the HDDs. Defaults to 1.
+        training_percentage (float, optional): The percentage of data to use for training. Defaults to 0.7.
+        resampler_balancing (int, optional): The resampler balancing factor. Defaults to 5.
+        oversample_undersample (int, optional): The type of resampling to use. Defaults to 0.
+
+    Returns:
+        dict: A dictionary containing the training and testing datasets.
+
+    Raises:
+        FileNotFoundError: If the dataset file is not found.
+    """
+
+    name_file = 'Final_Dataset.pkl'
+    read_dir = os.path.join('..', 'data_input')
+
+    try:
+        with open(os.path.join(read_dir, name_file), 'rb') as handle:
+            dataset = pickle.load(handle)
+        print('Dataset {} already present'.format(name_file))
+    except FileNotFoundError:
+        X_matrix = matrix[:, :, :]
+        Y_matrix = np.zeros(X_matrix.shape[0])
+
+        for hdd in np.arange(X_matrix.shape[0]):
+            if 1 in X_matrix[hdd, :, 0]:
+                Y_matrix[hdd] = 1
+        
+        print('Failed hard disk = {}'.format(sum(Y_matrix)))
+
+        if divide_hdd == 1:
+            X_train_hd, X_test_hd, y_train_hd, y_test_hd = train_test_split(
+                X_matrix, Y_matrix, stratify=Y_matrix, test_size=1 - training_percentage)
+
+            def create_dataset(X_hd, y_hd, for_training=True):
+                X, Y, HD_numbers = [], [], []
+                for hdd_number in np.arange(y_hd.shape[0]):
+                    print(f"Analyzing HD number {hdd_number}", end="\r")
+                    if y_hd[hdd_number] == 1:
+                        end_idx = np.where(X_hd[hdd_number, :, 0] == 1)[0][0]
+                        temp = X_hd[hdd_number, :end_idx, 1:]
+                        label = np.concatenate((np.zeros(temp.shape[0] - 7), np.ones(7)))
+                    else:
+                        end_idx = np.where(X_hd[hdd_number, :, 0] == 2)[0][0] - 8 if np.where(X_hd[hdd_number, :, 0] == 2)[0].size > 0 else -7
+                        temp = X_hd[hdd_number, :end_idx, 1:]
+                        label = np.zeros(temp.shape[0])
+
+                    X.append(temp)
+                    Y.append(label)
+                    if not for_training:
+                        HD_numbers.append(np.ones(temp.shape[0]) * hdd_number)
+
+                X, Y = np.concatenate(X), np.concatenate(Y)
+                if not for_training:
+                    HD_numbers = np.concatenate(HD_numbers)
+                    return X, Y, HD_numbers
+                return X, Y
+
+            X_train, Y_train = create_dataset(X_train_hd, y_train_hd)
+            X_test, Y_test, HD_number_test = create_dataset(X_test_hd, y_test_hd, for_training=False)
+
+            # Remove rows with NaN values
+            non_nan_train = ~np.isnan(X_train).any(axis=1)
+            X_train, Y_train = X_train[non_nan_train], Y_train[non_nan_train]
+
+            non_nan_test = ~np.isnan(X_test).any(axis=1)
+            X_test, Y_test, HD_number_test = X_test[non_nan_test], Y_test[non_nan_test], HD_number_test[non_nan_test]
+
+            # Resampling
+            resampler = RandomUnderSampler(1 / resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(1 / resampler_balancing, random_state=42)
+            X_train, Y_train = resampler.fit_resample(X_train, Y_train)
+
+            dataset = {'X_train': X_train, 'Y_train': Y_train, 'X_test': X_test, 'Y_test': Y_test, 'HDn_test': HD_number_test}
+
+            with open(os.path.join(read_dir, name_file), 'wb') as handle:
+                pickle.dump(dataset, handle)
+
+    return dataset
 
 def import_data(years, model, name, **args):
 	""" Import hard drive data from csvs on disk.
@@ -327,40 +261,39 @@ def import_data(years, model, name, **args):
 	:return: Dataframe with hard drive data.
 	
 	"""
-	years_list = ''
-	for y in years:
-		years_list = years_list+ '_' + y
-	try:
-		feat = args['features']
-		file = '../temp/' + model + years_list+'.pkl'	
-	except:
-		file = '../temp/' + model + years_list+'_all.pkl'	
+	years_list = '_' + '_'.join(years)
+	file = os.path.join('..', 'temp', f'{model}{years_list}.pkl')
+
+	if not os.path.exists(file):
+		file = os.path.join('..', 'temp', f'{model}{years_list}_all.pkl')
+
 	try:
 		df = pd.read_pickle(file)
-	except:
+		print(f'Data loaded from {file}')
+	except FileNotFoundError:
+		print('Creating new DataFrame from CSV files.')
 		cwd = os.getcwd()
-		df = pd.DataFrame()
+		all_data = []
+
 		for y in years:
-			print('Analyzing year {} \r'.format(y), end="\r")
-			try:
-				data = pd.concat([
-					(df := pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date']))[df.model == model]
-					for f in glob.glob(cwd + '/../../HDD_dataset/' + y + '/*.csv')
-				], ignore_index=True)
-			except:
-				data = pd.concat([
-					(df := pd.read_csv(f, header=0, parse_dates=['date']))[df.model == model]
-					for f in glob.glob(cwd + '/../../HDD_dataset/' + y + '/*.csv')
-				], ignore_index=True)
-						#data = data[data.model == model]
-			data.drop(columns=['model'], inplace=True)
-			data.failure = data.failure.astype('int')
-			#data.smart_9_raw = data.smart_9_raw / 24.0 # convert power-on hours to days
-			df = pd.concat([df, data])
-	        
-		df.reset_index(inplace=True, drop=True)
-		df = df.set_index(['serial_number', 'date']).sort_index()
+			print(f'Analyzing year {y}', end="\r")
+			for f in glob.glob(os.path.join(cwd, '..', '..', 'HDD_dataset', y, '*.csv')):
+				try:
+					data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
+				except ValueError:
+					data = pd.read_csv(f, header=0, parse_dates=['date'])
+				
+				data = data[data.model == model].copy()
+				data.drop(columns=['model'], inplace=True)
+				data.failure = data.failure.astype('int')
+				all_data.append(data)
+
+		df = pd.concat(all_data, ignore_index=True)
+		df.set_index(['serial_number', 'date'], inplace=True)
+		df.sort_index(inplace=True)
 		df.to_pickle(file)
+		print(f'Data saved to {file}')
+
 	return df
 
 
@@ -626,7 +559,7 @@ def handle_windowing(df, model, window_dim, rank, num_features, overlap, windowi
         return df
 
     try:
-        windowed_df = pd.read_pickle(f'../temp/{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl')
+        windowed_df = pd.read_pickle(os.path.join('..', 'temp', f'{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl'))
         print('Loading the windowed dataset')
         return rename_columns(windowed_df)
     except FileNotFoundError:

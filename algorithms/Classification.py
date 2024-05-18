@@ -1,23 +1,21 @@
 import os
 import pandas as pd
-import datetime
+# import datetime
 import numpy as np
 from numpy import *
-import math
-import pickle
-from scipy.stats.stats import pearsonr
+# import math
+# import pickle
+# from scipy.stats.stats import pearsonr
+# import matplotlib.pyplot as plt
 import sys
-import matplotlib.pyplot as plt
-import sys
-import numpy as np
-import argparse
+# import argparse
 from Networks_pytorch import *
 from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
+# from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
 from sklearn.utils import shuffle
 
 
@@ -41,6 +39,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 	Y_test_real = []
 	prediction = []
 	if classifier == 'RandomForest':
+		# Train and validate the network using RandomForest
 		X_train, Y_train = shuffle(X_train, Y_train)
 		model = RandomForestClassifier(n_estimators=30, min_samples_split=10, random_state=3)
 		model.fit(X_train[:, :], Y_train)
@@ -51,6 +50,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 		# Train and validate the network using TCN
 		net_train_validate(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
 	elif classifier == 'LSTM':
+		# Train and validate the network using LSTM
 		train_dataset = FPLSTMDataset(X_train, Y_train)
 		train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
 		test_dataset = FPLSTMDataset(X_test, Y_test.values)
@@ -190,6 +190,7 @@ if __name__ == '__main__':
 		#hidden state sizes (from [14])
 		# The dimensionality of the output space of the LSTM layer
 		lstm_hidden_s = 64
+		# The dimensionality of the output space of the first fully connected layer
 		fc1_hidden_s = 16
 		num_inputs = Xtrain.shape[1]
 		net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
