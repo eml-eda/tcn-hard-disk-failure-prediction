@@ -458,14 +458,19 @@ def generate_failure_predictions(df, days, window):
         slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9 
         i += 1
         if inner_df.failure.max() == 1:
-            predictions = np.concatenate((np.zeros(slicer_val-days), np.ones(days)))
-            valid = np.concatenate((np.zeros(slicer_val-days-window), np.ones(days+window)))
+            # if the HD failed, we create a prediction array with 1s for the last 'days' days and 0s for the rest
+            # np.ones(days) represents the period immediately before and including the failure
+            # np.zeros(slicer_val - days) represents the period before the failure
+            predictions = np.concatenate((np.zeros(slicer_val - days), np.ones(days)))
+			# create a validation array with 1s for the last 'days' days and 0s for the rest
+            valid = np.concatenate((np.zeros(slicer_val - days - window), np.ones(days + window)))
         else:
+			# if the HD did not fail, we set the prediction array to all 0s
             predictions = np.zeros(slicer_val)
             valid = np.zeros(slicer_val)
-        pred_list = np.concatenate((pred_list,predictions))
-        valid_list = np.concatenate((valid_list,valid))
-    print('A')
+        pred_list = np.concatenate((pred_list, predictions))
+        valid_list = np.concatenate((valid_list, valid))
+    print('HDs analyzed: {}'.format(i))
     pred_list = np.asarray(pred_list)
     valid_list = np.asarray(valid_list)
     return pred_list, valid_list
@@ -1015,21 +1020,27 @@ def feature_selection(df, num_features):
 
 	print('Feature selection')
 
-	scipy.stats.pearsonr(df['smart_4_raw'], df['smart_4_normalized'])
-
 	for feature in df.columns:
 		if 'raw' in feature:
-			print('T-test for feature {} \r'.format(feature), end="\r")
-			# We use T-test to compare the means of two groups of features
-			# T-statistics: difference between the means of the two groups relative to the variability in the data
-			# p-value: probability of observing a test statistic as extreme as the one computed from the data
+			print('Feature: {}'.format(feature))
+        
+			# (Not used) Pearson correlation to measure the linear relationship between two variables
+			correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
+			print('Pearson correlation: %.3f' % correlation)
+			
+			# T-test to compare the means of two groups of features
 			_, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
+			print('T-test p-value: %.3f' % p_val)
+
 			dict1[feature] = p_val
 
-	print('T')
+	print('Sorting features')
 
+	# Sort the features based on the p-values (item[1] is used to sort the dictionary by its value, and item[0] is used to sort by key)
 	features = {k: v for k, v in sorted(dict1.items(), key=lambda item: item[1])}
+	# Select the top 'num_features' features
 	features = pd.DataFrame(features.items(), index=features.keys()).dropna()
+	# Extract the feature names
 	features = features[:num_features][0].values
 
 	for feature in df.columns:
