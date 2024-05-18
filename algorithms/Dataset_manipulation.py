@@ -304,6 +304,7 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
 
 			# Resampling
 			if oversample_undersample == 0:
+				# Random state is set to 42 for reproducibility
 				rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 			else:
 				rus = SMOTE(1 / resampler_balancing, random_state=42)
@@ -702,6 +703,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 		Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=test_train_perc, random_state=42)
 		if oversample_undersample == 0:
 			# define train and test sets while taking into account whether the drive failed or not
+			# Random state is set to 42 for reproducibility
 			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
 			# Fix the data imbalance using SMOTE
@@ -756,6 +758,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 			Xtrain = arrays_to_matrix(Xtrain)
 			Xtest = arrays_to_matrix(Xtest)
 		if oversample_undersample == 0:
+			# Random state is set to 42 for reproducibility
 			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
 			rus = SMOTE(1 / resampler_balancing, random_state=42)
@@ -781,6 +784,7 @@ def dataset_partitioning(df, model, overlap = 0, rank = 'None', num_features = 1
 		ytrain = y[:int(X.shape[0]*(1-test_train_perc))]
 		ytest = y[int(X.shape[0]*(1-test_train_perc)):]
 		if oversample_undersample == 0:
+			# Random state is set to 42 for reproducibility
 			rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
 		else:
 			rus = SMOTE(1 / resampler_balancing, random_state=42)
