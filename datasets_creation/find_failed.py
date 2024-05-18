@@ -15,7 +15,7 @@ year_dirs = {str(year): os.path.join(base_path, str(year)) for year in range(201
 years = [str(year) for year in range(2013, 2018)]
 model = 'ST3000DM001'
 list_failed = []
-failed = False
+failed = True
 
 # Create temp directory
 temp_dir = os.path.join(script_dir, '..', 'temp')
@@ -28,14 +28,23 @@ for year in years:
 
     # Process each file
     for file_path in sorted(files):
-        file_r = pd.read_csv(file_path)
+        try:
+            file_r = pd.read_csv(file_path)
+        except FileNotFoundError:
+            print(f"Error: The file {file_path} does not exist.")
+            continue
+
+        # Filter the model with the chosen model
         model_chosen = file_r[file_r['model'] == model]
+        #print(f"Number of entries after filtering by model: {len(model_chosen)}")
         
         # Print processing day
         print('processing day ' + str(model_chosen['date'].values))
 
         if failed:
+            # Filter the failed hard drives
             model_chosen = model_chosen[model_chosen['failure'] == 1]
+            #print(f"Number of entries after filtering by failure: {len(model_chosen)}")
 
         # Append serial numbers
         list_failed.extend(model_chosen['serial_number'].values)
