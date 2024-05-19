@@ -752,16 +752,10 @@ def balance_data(Xtrain, ytrain, Xtest, ytest, resampler_balancing, oversample_u
     - ytrain (Series): The balanced training labels.
     - ytest (Series): The test labels.
     """
-    if oversample_undersample == 0:
-        rus = RandomUnderSampler(1 / resampler_balancing, random_state=42)
-    else:
-        rus = SMOTE(1 / resampler_balancing, random_state=42)
+    resampler = RandomUnderSampler(1 / resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(1 / resampler_balancing, random_state=42)
 
     if oversample_undersample != 2:
-        if windowing == 1:
-            Xtrain, ytrain = resample_windowed_data(Xtrain, ytrain, rus)
-        else:
-            Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
+        Xtrain, ytrain = resample_windowed_data(Xtrain, ytrain, resampler) if windowing else resampler.fit_resample(Xtrain, ytrain)
     else:
         ytrain = ytrain.astype(int)
         ytest = ytest.astype(int)

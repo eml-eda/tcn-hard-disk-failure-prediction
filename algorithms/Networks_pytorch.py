@@ -250,6 +250,7 @@ def init_net(lr, history_signal, num_inputs):
         tuple: A tuple containing the initialized neural network model and optimizer.
     """
     net = Net_paper(history_signal, num_inputs)
+    # Return a new optimizer object for the given model parameters
     optimizer = getattr(optim, 'Adam')(net.parameters(), lr=lr)
     if torch.cuda.is_available():
         print('Moving model to cuda')
@@ -279,13 +280,13 @@ def report_metrics(Y_test_real, prediction, metric):
     total_0 = len(prediction_0_true)
     predicted_correct_1 = sum(prediction_1_true)
     metrics = {
-        'RMSE': lambda: np.sqrt(mean_squared_error(Y_test_real, prediction)),
-        'MAE': lambda: mean_absolute_error(Y_test_real, prediction),
-        'FDR': lambda: (sum(prediction_1_true) / total_1 * 100),
-        'FAR': lambda: (sum(prediction_0_true) / total_0 * 100),
-        'F1': lambda: f1_score(Y_test_real, prediction),
-        'recall': lambda: recall_score(Y_test_real, prediction),
-        'precision': lambda: precision_score(Y_test_real, prediction),
+        'RMSE': lambda: np.sqrt(mean_squared_error(Y_test_real, prediction)),  # Root Mean Squared Error
+        'MAE': lambda: mean_absolute_error(Y_test_real, prediction),  # Mean Absolute Error
+        'FDR': lambda: (sum(prediction_1_true) / total_1 * 100),  # False Discovery Rate
+        'FAR': lambda: (sum(prediction_0_true) / total_0 * 100),  # False Alarm Rate
+        'F1': lambda: f1_score(Y_test_real, prediction),  # F1 Score
+        'recall': lambda: recall_score(Y_test_real, prediction),  # Recall (sensitivity)
+        'precision': lambda: precision_score(Y_test_real, prediction),  # Precision (positive predictive value)
     }
 
     for m in metric:
@@ -361,7 +362,7 @@ def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
                 train_loss.item() / (10 * batchsize), correct / ((batch_idx + 1) * batchsize)), end="\r")
             train_loss = 0
     
-    print('T')
+    print('Training completed')
     F1 = report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
     # at each epoch, we test the network to print the accuracy
     test(Xtest, ytest, model)
@@ -382,28 +383,36 @@ def test(Xtest, ytest, model):
         numpy.ndarray: Predictions made by the model.
 
     """
-    model.eval()
-    test_loss = 0
-    correct = 0
-    batchsize = 30000
-    nbatches = Xtest.shape[0] // batchsize
-    predictions = np.ndarray(Xtest.shape[0])
-    criterion = torch.nn.CrossEntropyLoss()
+    model.eval()  # Set the model to evaluation mode
+    test_loss = 0  # Initialize the total test loss to 0
+    correct = 0  # Initialize the number of correct predictions to 0
+    batchsize = 30000  # Define the number of samples in each batch
+    nbatches = Xtest.shape[0] // batchsize  # Calculate the number of batches
+    predictions = np.ndarray(Xtest.shape[0])  # Initialize an array to store the model's predictions
+    criterion = torch.nn.CrossEntropyLoss()  # Define the loss function
 
+    # Disable gradient calculations (since we are in test mode)
     with torch.no_grad():
         for batch_idx in np.arange(nbatches + 1):
+            # Extract the data and target for this batch
             data, target = Variable(torch.Tensor(Xtest[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :, :]),
                                    volatile=True), Variable(torch.Tensor(ytest[(batch_idx * batchsize):((batch_idx + 1) * batchsize)]))
+            # If CUDA is available, move the data and target to the GPU
             if torch.cuda.is_available():
                 data, target = data.cuda(), target.cuda()
+            # Forward pass: compute predicted outputs by passing inputs to the model
             output = model(data)
+            # Calculate the batch loss
             test_loss = criterion(output, target.long()).item()
+            # Get the predicted class from the maximum class score
             pred = output.data.max(1, keepdim=True)[1]
+            # Compare predictions to true label
             correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+            # Store the predictions for this batch
             predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
 
+    # Calculate the average loss over all of the batches
     test_loss /= Xtest.shape[0]
-    print('T')
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, Xtest.shape[0], 100. * correct / Xtest.shape[0]))
     report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
@@ -444,7 +453,7 @@ def net_train_validate(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, bat
             lr /= 10
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
-    print('T')
+    print('Training completed')
 
 
 def train_LSTM(ep, train_loader, optimizer, model, Xtrain_examples):
@@ -461,34 +470,42 @@ def train_LSTM(ep, train_loader, optimizer, model, Xtrain_examples):
     Returns:
         dict: A dictionary containing the F1 scores for different metrics.
     """
-    train_loss = 0
-    model.train()
-    correct = 0
-    weights = [1.9, 0.1]
-    class_weights = torch.FloatTensor(weights).cuda()
-    predictions = np.ndarray(Xtrain_examples)
-    ytrain = np.ndarray(Xtrain_examples)
+    train_loss = 0  # Initialize the total training loss to 0
+    model.train()  # Set the model to training mode
+    correct = 0  # Initialize the number of correct predictions to 0
+    weights = [1.9, 0.1]  # Define class weights for the loss function
+    class_weights = torch.FloatTensor(weights).cuda()  # Convert class weights to a CUDA tensor
+    predictions = np.ndarray(Xtrain_examples)  # Store the model's predictions
+    ytrain = np.ndarray(Xtrain_examples)  # Store the true labels
     #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
     criterion = torch.nn.CrossEntropyLoss()
+
     for i, data in enumerate(train_loader):
-        sequences, labels = data
-        batchsize = sequences.shape[1]
-        sequences = sequences.cuda()
-        labels = labels.cuda()
-        optimizer.zero_grad()
-        output = model(sequences)
-        l = criterion(output, labels)
-        l.backward()
-        optimizer.step()
-        pred = output.data.max(1, keepdim=True)[1]
+        sequences, labels = data  # Input sequences and their corresponding labels
+        batchsize = sequences.shape[1]  # Number of sequences in each batch
+        sequences = sequences.cuda()  # Move sequences to GPU
+        labels = labels.cuda()  # Move labels to GPU
+        optimizer.zero_grad()  # Reset gradients from previous iteration
+        output = model(sequences)  # Forward pass through the model
+        l = criterion(output, labels)  # Calculate loss between model output and true labels
+        l.backward()  # Backward pass to calculate gradients
+        optimizer.step()  # Update model parameters
+        pred = output.data.max(1, keepdim=True)[1]  # Get the predicted labels
+        # Store the predicted labels for this batch in the predictions array
         predictions[(i * batchsize):((i + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
+        # Store the true labels for this batch in the ytrain array
         ytrain[(i * batchsize):((i + 1) * batchsize)] = labels.cpu().numpy()
+        # Calculate the number of correct predictions
         correct += pred.eq(labels.data.view_as(pred)).cpu().sum()
-        train_loss += l.item()
-        if i > 0 and i % 10 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {} \r'.format(ep, i * batchsize, Xtrain_examples, (100. * i * batchsize) / Xtrain_examples, train_loss / (10 * batchsize), float(correct) / ((i + 1) * batchsize)), end="\r")
-            train_loss = 0
-    print('T')
+        train_loss += l.item()  # Add the loss for this batch to the total training loss
+        if i > 0 and i % 10 == 0:  # Every 10 iterations, print the average loss and accuracy for the last 10 batches
+            print(f'Train Epoch: {ep} [{i * batchsize}/{Xtrain_examples} ({(100. * i * batchsize) / Xtrain_examples:.0f}%)] Loss: {train_loss / (10 * batchsize):.6f} Accuracy: {float(correct) / ((i + 1) * batchsize):.4f}', end="\r")
+            # train_loss = 0 # FIXME: We do not need to set the loss to 0 here
+
+    avg_train_loss = train_loss / len(train_loader.dataset)
+    avg_train_acc = correct / len(train_loader.dataset)
+    print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {:.6f}'.format(ep, avg_train_loss, avg_train_acc))
+
     ytrain = ytrain[:((i + 1) * batchsize)]
     predictions = predictions[:((i + 1) * batchsize)]
     F1 = report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
