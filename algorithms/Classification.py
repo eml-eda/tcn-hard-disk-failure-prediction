@@ -133,7 +133,7 @@ if __name__ == '__main__':
 	overlap = 1
 
 	try:
-		df = pd.read_pickle(f'../temp/{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
+		df = pd.read_pickle(os.path.join('..', 'temp', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 	except:
 		if ranking == 'None':
 			df = import_data(years=years, model=model, name='iSTEP', features=features)
