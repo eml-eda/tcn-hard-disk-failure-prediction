@@ -148,7 +148,7 @@ if __name__ == '__main__':
 		# predict_val represents the prediction value of the failure
 		# validate_val represents the validation value of the failure
 		df['predict_val'], df['validate_val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
-		if ranking is not 'None':
+		if ranking != 'None':
 			df = feature_selection(df, num_features)
 		print('Used features')
 		for column in list(df):
