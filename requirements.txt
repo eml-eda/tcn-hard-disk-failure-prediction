@@ -1,0 +1,8 @@
+imbalanced_learn==0.10.1
+matplotlib==3.7.1
+numpy==1.24.3
+pandas==1.5.3
+scikit_learn==1.3.0
+scipy==1.10.1
+torch==2.3.0
+wget==3.2
