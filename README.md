@@ -8,6 +8,9 @@
   - [Code Structure](#code-structure)
   - [Description of each file](#description-of-each-file)
   - [Wiki](#wiki)
+  - [How to run the code](#how-to-run-the-code)
+  - [Core Parts of this Algorithm](#core-parts-of-this-algorithm)
+  - [Future Work](#future-work)
 
 ## Introduction
 
@@ -90,3 +93,46 @@ tcn-hard-disk-failure-prediction
 ## Wiki
 
 For more information, please refer to the [wiki](https://github.com/Disk-Failure-Prediction/tcn-hard-disk-failure-prediction/wiki).
+
+## How to run the code
+
+1. Clone the repository:
+
+   ```bash
+   git clone git@github.com:Prognostika/tcn-hard-disk-failure-prediction.git
+   ```
+
+2. Install the required packages:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Download the dataset via the `get_dataset.py` script:
+
+   ```bash
+   python .\datasets_creation\get_dataset.py
+   ```
+
+   After running the script, the dataset will be downloaded and saved in the `HDD_dataset` directory in the parent folder of the repository. (The total dataset and zip package will be around 50 GB, make sure you have enough space on your disk.)
+
+4. Run the classification script:
+
+   ```bash
+   python .\algorithms\Classification.py
+   ```
+
+   The script will preprocess the dataset and save the preprocessed dataset in the `HDD_dataset` directory, then it will train and test the classification models on the dataset.
+
+## Core Parts of this Algorithm
+
+1. **Feature Selection**: Currently we use t-test for feature selection. We select the top 18 features based on the t-test scores.
+2. **Dataset Unbalancing**: Currently we use SMOTE for data augmentation on the failed disk samples to balance the dataset, and use RandomUnderSampler for the majority class.
+3. **Data Training**: Currently we use RandomForest, TCN, and LSTM for training the data, and use "'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'" metrics to evaluate the model, according to the result, the TCN model performs better than the other models.
+
+## Future Work
+
+1. Use the Genetic Algorithm (provided by DEAP) before the t-test for the statistical significance of the selected features.
+2. Add multiple disk models for prediction. (Currently, we only have one disk model, ST4000DM000)
+3. Use time-based SMOTE for data augmentation on failed disk samples to balance the dataset.
+4. Use transfer learning to improve the model performance.

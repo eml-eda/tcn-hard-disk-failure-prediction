@@ -608,20 +608,26 @@ def perform_windowing(df, window_dim, overlap):
     if overlap == 1:
         for i in np.arange(window_dim - 1):
             print(f'Concatenating time - {i} \r', end="\r")
+            # Shift the dataframe and concatenate along the columns
             windowed_df = pd.concat([df.shift(i + 1), windowed_df], axis=1)
     else:
+        # Get the factors of window_dim
         window_dim_divisors = factors(window_dim)
         k = 0
         down_factor_old = 1
         serials = df.serial_number
         for down_factor in window_dim_divisors:
+            # Shift the dataframe by the factor and concatenate
             for i in np.arange(down_factor - 1):
                 k += down_factor_old
                 print(f'Concatenating time - {k} \r', end="\r")
                 windowed_df = pd.concat([df.shift(i + 1), windowed_df], axis=1)
             down_factor_old *= down_factor
+            # Under sample the dataframe based on the serial numbers and the factor
             indexes = windowed_df.groupby(serials).apply(under_sample, down_factor)
+            # Update windowed_df based on the indexes
             windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
+            # Update the original dataframe
             df = windowed_df
     return rename_columns(windowed_df)
 
