@@ -27,145 +27,145 @@ import scipy.stats
 
 
 def plot_feature(dataset):
-	"""
-	Plots a scatter plot of a specific feature in the dataset.
+    """
+    Plots a scatter plot of a specific feature in the dataset.
 
-	Parameters:
-	- dataset (dict): A dictionary containing the dataset with keys 'X' and 'Y'.
+    Parameters:
+    - dataset (dict): A dictionary containing the dataset with keys 'X' and 'Y'.
 
-	Returns:
-	- None
-	"""
-	X = dataset['X']
-	Y = dataset['Y']
-	feat = X[:,10]
-	np.arange(len(feat))
-	fig,ax = plt.subplots()
-	ax.scatter(np.arange(len(feat[Y==0])),feat[Y==0], color ='C0', label='good HDD')
-	ax.scatter(np.arange(len(feat[Y==0]),len(feat)),feat[Y==1],color ='C1',label='failed HDD')
-	ax.set_ylabel('SMART feature [#]', fontsize=14, fontweight='bold', color = 'C0')
-	ax.set_xlabel('time points / hdd', fontsize=14, fontweight='bold')
-	legend_properties = {'weight':'bold'}
-	plt.legend(fontsize=12, prop = legend_properties)
-	plt.show()
+    Returns:
+    - None
+    """
+    X = dataset['X']
+    Y = dataset['Y']
+    feat = X[:,10]
+    np.arange(len(feat))
+    fig,ax = plt.subplots()
+    ax.scatter(np.arange(len(feat[Y==0])),feat[Y==0], color ='C0', label='good HDD')
+    ax.scatter(np.arange(len(feat[Y==0]),len(feat)),feat[Y==1],color ='C1',label='failed HDD')
+    ax.set_ylabel('SMART feature [#]', fontsize=14, fontweight='bold', color = 'C0')
+    ax.set_xlabel('time points / hdd', fontsize=14, fontweight='bold')
+    legend_properties = {'weight':'bold'}
+    plt.legend(fontsize=12, prop = legend_properties)
+    plt.show()
 
 def plot_hdd(X, fail, prediction):
-	"""
-	Plots the SMART features of a hard disk drive (HDD) over time.
+    """
+    Plots the SMART features of a hard disk drive (HDD) over time.
 
-	Parameters:
-	X (numpy.ndarray): The input array containing the SMART features of the HDD.
-	fail (int): The failure status of the HDD (1 for failed, 0 for good).
-	prediction (str): The predicted status of the HDD.
+    Parameters:
+    X (numpy.ndarray): The input array containing the SMART features of the HDD.
+    fail (int): The failure status of the HDD (1 for failed, 0 for good).
+    prediction (str): The predicted status of the HDD.
 
-	Returns:
-	None
-	"""
-	fig, ax = plt.subplots()
-	features = {
-		'Xiao_et_al': [
-			'date',
-			'failure',
-			'smart_1_normalized',
-			'smart_5_normalized',
-			'smart_5_raw',
-			'smart_7_normalized',
-			'smart_9_raw',
-			'smart_12_raw',
-			'smart_183_raw',
-			'smart_184_normalized',
-			'smart_184_raw',
-			'smart_187_normalized',
-			'smart_187_raw',
-			'smart_189_normalized',
-			'smart_193_normalized',
-			'smart_193_raw',
-			'smart_197_normalized',
-			'smart_197_raw',
-			'smart_198_normalized',
-			'smart_198_raw',
-			'smart_199_raw'
-		]
-	}
-	k = 0
-	for i in [1, 2, 7, 8, 9, 10]:
-		ax.plot(np.arange(X.shape[0]), X[:, i] + 0.01 * k, label=features['Xiao_et_al'][i + 2])
-		k += 1
-	ax.set_ylabel('SMART features value [#]', fontsize=14, fontweight='bold', color='C0')
-	ax.set_xlabel('time points', fontsize=14, fontweight='bold')
-	legend_properties = {'weight': 'bold'}
-	plt.legend(fontsize=12, prop=legend_properties)
-	plt.title('The HDD is {} (failed=1/good=0) predicted as {}'.format(fail, prediction))
-	plt.show()
+    Returns:
+    None
+    """
+    fig, ax = plt.subplots()
+    features = {
+        'Xiao_et_al': [
+            'date',
+            'failure',
+            'smart_1_normalized',
+            'smart_5_normalized',
+            'smart_5_raw',
+            'smart_7_normalized',
+            'smart_9_raw',
+            'smart_12_raw',
+            'smart_183_raw',
+            'smart_184_normalized',
+            'smart_184_raw',
+            'smart_187_normalized',
+            'smart_187_raw',
+            'smart_189_normalized',
+            'smart_193_normalized',
+            'smart_193_raw',
+            'smart_197_normalized',
+            'smart_197_raw',
+            'smart_198_normalized',
+            'smart_198_raw',
+            'smart_199_raw'
+        ]
+    }
+    k = 0
+    for i in [1, 2, 7, 8, 9, 10]:
+        ax.plot(np.arange(X.shape[0]), X[:, i] + 0.01 * k, label=features['Xiao_et_al'][i + 2])
+        k += 1
+    ax.set_ylabel('SMART features value [#]', fontsize=14, fontweight='bold', color='C0')
+    ax.set_xlabel('time points', fontsize=14, fontweight='bold')
+    legend_properties = {'weight': 'bold'}
+    plt.legend(fontsize=12, prop=legend_properties)
+    plt.title('The HDD is {} (failed=1/good=0) predicted as {}'.format(fail, prediction))
+    plt.show()
 
 def pandas_to_3dmatrix(read_dir, model, years, dataset_raw):
-	"""
-	Convert a pandas DataFrame to a 3D matrix.
+    """
+    Convert a pandas DataFrame to a 3D matrix.
 
-	Args:
-		read_dir (str): The directory path where the matrix file will be read from or saved to.
-		model: The model object.
-		years (list): A list of years.
-		dataset_raw (pandas.DataFrame): The raw dataset.
+    Args:
+        read_dir (str): The directory path where the matrix file will be read from or saved to.
+        model: The model object.
+        years (list): A list of years.
+        dataset_raw (pandas.DataFrame): The raw dataset.
 
-	Returns:
-		dict: The converted 3D matrix dataset.
+    Returns:
+        dict: The converted 3D matrix dataset.
 
-	Raises:
-		FileNotFoundError: If the matrix file is not found.
+    Raises:
+        FileNotFoundError: If the matrix file is not found.
 
-	"""
-	join_years = '_'.join(years) + '_'
-	name_file = f'Matrix_Dataset_{join_years}.pkl'
+    """
+    join_years = '_'.join(years) + '_'
+    name_file = f'Matrix_Dataset_{join_years}.pkl'
 
-	try:
-		with open(os.path.join(read_dir, name_file), 'rb') as handle:
-			dataset = pickle.load(handle)
-		print('Matrix 3d {} already present'.format(name_file))
-	except FileNotFoundError:
-		print(f'Creating matrix 3D {name_file}')
-		valid_rows_mask = []
+    try:
+        with open(os.path.join(read_dir, name_file), 'rb') as handle:
+            dataset = pickle.load(handle)
+        print('Matrix 3d {} already present'.format(name_file))
+    except FileNotFoundError:
+        print(f'Creating matrix 3D {name_file}')
+        valid_rows_mask = []
 
-		# rows_dim = len(dataset_raw['failure'])
-		# feat_dim = len(dataset_raw.columns) - 2
+        # rows_dim = len(dataset_raw['failure'])
+        # feat_dim = len(dataset_raw.columns) - 2
 
         # Remove HDDs with some features always NaN
-		for _, row in dataset_raw.iterrows():
-			valid = not any(len(col) == sum(math.isnan(x) for x in col) for col in row[2:])
-			valid_rows_mask.append(valid)
+        for _, row in dataset_raw.iterrows():
+            valid = not any(len(col) == sum(math.isnan(x) for x in col) for col in row[2:])
+            valid_rows_mask.append(valid)
 
-		dataset_raw = dataset_raw[valid_rows_mask]
-		# rows_dim = len(dataset_raw['failure'])
+        dataset_raw = dataset_raw[valid_rows_mask]
+        # rows_dim = len(dataset_raw['failure'])
 
         # Compute max timestamps in an HDD
-		print('Computing maximum number of timestamps of one HDD')
-		max_len = max(len(row['date']) for _, row in dataset_raw.iterrows())
+        print('Computing maximum number of timestamps of one HDD')
+        max_len = max(len(row['date']) for _, row in dataset_raw.iterrows())
 
-		matrix_3d = []
-		for k, row in dataset_raw.iterrows():
-			print(f'Analyzing HD number {k}', end="\r")
-			hd = [row[feature] for feature in row.index[1:]]
-			hd = np.asarray(hd)
-			hd_padded = np.pad(hd, ((0, 0), (0, max_len - hd.shape[1])), mode='constant', constant_values=2)
-			matrix_3d.append(hd_padded.T)
+        matrix_3d = []
+        for k, row in dataset_raw.iterrows():
+            print(f'Analyzing HD number {k}', end="\r")
+            hd = [row[feature] for feature in row.index[1:]]
+            hd = np.asarray(hd)
+            hd_padded = np.pad(hd, ((0, 0), (0, max_len - hd.shape[1])), mode='constant', constant_values=2)
+            matrix_3d.append(hd_padded.T)
 
-		matrix_3d = np.asarray(matrix_3d)
+        matrix_3d = np.asarray(matrix_3d)
 
         # Debugging information
-		good, failed = 0, 0
-		for row in matrix_3d[:, :, 0]:
-			if 1 in row:
-				failed += 1
-			else:
-				good += 1
+        good, failed = 0, 0
+        for row in matrix_3d[:, :, 0]:
+            if 1 in row:
+                failed += 1
+            else:
+                good += 1
 
-		print(f'There are {good} good disks and {failed} failed disks in the dataset')
+        print(f'There are {good} good disks and {failed} failed disks in the dataset')
 
-		dataset = {'matrix': matrix_3d}
-		with open(os.path.join(read_dir, name_file), 'wb') as handle:
-			pickle.dump(dataset, handle)
+        dataset = {'matrix': matrix_3d}
+        with open(os.path.join(read_dir, name_file), 'wb') as handle:
+            pickle.dump(dataset, handle)
 
-	return dataset
+    return dataset
 
 def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7, resampler_balancing=5, oversample_undersample=0):
     """
@@ -253,100 +253,102 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
     return dataset
 
 def import_data(years, model, name, **args):
-	""" Import hard drive data from csvs on disk.
-	
-	:param quarters: List of quarters to import (e.g., 1Q19, 4Q18, 3Q18, etc.)
-	:param model: String of the hard drive model number to import.
-	:param columns: List of the columns to import.
-	:return: Dataframe with hard drive data.
-	
-	"""
-	years_list = '_' + '_'.join(years)
+    """ Import hard drive data from csvs on disk.
+    
+    :param quarters: List of quarters to import (e.g., 1Q19, 4Q18, 3Q18, etc.)
+    :param model: String of the hard drive model number to import.
+    :param columns: List of the columns to import.
+    :return: Dataframe with hard drive data.
+    
+    """
+    years_list = '_' + '_'.join(years)
 
     # Fix the directory name as output
-	script_dir = os.path.dirname(os.path.abspath(__file__))
-	file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}.pkl')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}.pkl')
 
-	if not os.path.exists(file):
+    if not os.path.exists(file):
         # Fix the directory name
-		file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}_all.pkl')
+        file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}_all.pkl')
 
-	try:
-		df = pd.read_pickle(file)
-		print(f'Data loaded from {file}')
-	except FileNotFoundError:
-		print('Creating new DataFrame from CSV files.')
-		cwd = os.getcwd()
-		all_data = []
+    try:
+        df = pd.read_pickle(file)
+        print(f'Data loaded from {file}')
+    except FileNotFoundError:
+        print('Creating new DataFrame from CSV files.')
+        cwd = os.getcwd()
+        all_data = []
 
-		for y in years:
-			print(f'Analyzing year {y}', end="\r")
+        for y in years:
+            print(f'Analyzing year {y}', end="\r")
             # Fix the directory name
-			for f in glob.glob(os.path.join(cwd, '..', 'HDD_dataset', y, '*.csv')):
-				try:
-					data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
-				except ValueError:
-					data = pd.read_csv(f, header=0, parse_dates=['date'])
-				
-				data = data[data.model == model].copy()
-				data.drop(columns=['model'], inplace=True)
-				data.failure = data.failure.astype('int')
-				all_data.append(data)
+            for f in glob.glob(os.path.join(cwd, '..', 'HDD_dataset', y, '*.csv')):
+                try:
+                    data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
+                except ValueError:
+                    data = pd.read_csv(f, header=0, parse_dates=['date'])
+                
+                data = data[data.model == model].copy()
+                data.drop(columns=['model'], inplace=True)
+                data.failure = data.failure.astype('int')
+                all_data.append(data)
 
-		df = pd.concat(all_data, ignore_index=True)
-		df.set_index(['serial_number', 'date'], inplace=True)
-		df.sort_index(inplace=True)
-		df.to_pickle(file)
-		print(f'Data saved to {file}')
+        df = pd.concat(all_data, ignore_index=True)
+        df.set_index(['serial_number', 'date'], inplace=True)
+        df.sort_index(inplace=True)
+        df.to_pickle(file)
+        print(f'Data saved to {file}')
 
-	return df
+    return df
 
 
 def filter_HDs_out(df, min_days, time_window, tolerance):
-	""" Find HDs with an excessive amount of missing values.
-	
-	:param df: Input dataframe.
-	:param min_days: Minimum number of days HD needs to have been powered on.
-	:param time_window: Size of window to count missing values (e.g., 7 days as '7D', or five days as '5D')
-	:param tolerance: Maximum number of days allowed to be missing within time window.
-	:return: List of HDs with excessive amount of missing values
-	
-	"""
-	pcts = df.notna().sum() / df.shape[0] * 100
+    """ Find HDs with an excessive amount of missing values.
+    
+    :param df: Input dataframe.
+    :param min_days: Minimum number of days HD needs to have been powered on.
+    :param time_window: Size of window to count missing values (e.g., 7 days as '7D', or five days as '5D')
+    :param tolerance: Maximum number of days allowed to be missing within time window.
+    :return: List of HDs with excessive amount of missing values
+    
+    """
+    # Calculate the percentage of non-missing values
+    pcts = df.notna().sum() / df.shape[0] * 100
     # Identify columns to remove True / False, select column names with 'True' value, generate a list of column names to remove
-	cols = list(pcts[pcts < 45.0].index)
-	df.drop(cols, axis=1, inplace=True) # drop columns
-	df = df.dropna()
-	bad_power_hds = []
-	bad_missing_hds = []
+    cols = list(pcts[pcts < 45.0].index)
+    df.drop(cols, axis=1, inplace=True)  # Drop columns with any missing values
+    df = df.dropna()  # Drop rows with any missing values
+    bad_power_hds = []
+    bad_missing_hds = []
 
     # Loop over each group in the DataFrame, grouped by the first level of the index (serial number)
-	for serial_num, inner_df in df.groupby(level=0):
-		if len(inner_df) < min_days:  # identify HDs with too few power-on days
-			bad_power_hds.append(serial_num)
+    for serial_num, inner_df in df.groupby(level=0):
+        if len(inner_df) < min_days:  # identify HDs with too few power-on days
+            bad_power_hds.append(serial_num)
 
-		inner_df = inner_df.droplevel(level=0)
-		inner_df = inner_df.asfreq('D')
-		n_missing = max(inner_df.isna().rolling(time_window).sum().max())
+        inner_df = inner_df.droplevel(level=0)
+        inner_df = inner_df.asfreq('D')  # Convert inner_df to daily frequency
+        # Find the maximum number of missing values within any window of time_window days in any column of the DataFrame
+        n_missing = max(inner_df.isna().rolling(time_window).sum().max())
 
-		if n_missing >= tolerance:  # identify HDs with too many missing values
-			bad_missing_hds.append(serial_num)
+        if n_missing >= tolerance:  # identify HDs with too many missing values
+            bad_missing_hds.append(serial_num)
 
-	bad_hds = set(bad_missing_hds + bad_power_hds)
-	hds_remove = len(bad_hds)
-	hds_total = len(df.reset_index().serial_number.unique())
-	print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove / hds_total * 100, 2)))
+    bad_hds = set(bad_missing_hds + bad_power_hds)
+    hds_remove = len(bad_hds)
+    hds_total = len(df.reset_index().serial_number.unique())
+    print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove / hds_total * 100, 2)))
 
-	df = df.drop(bad_hds, axis=0)
+    df = df.drop(bad_hds, axis=0)
 
-	num_fail = df.failure.sum()
-	num_not_fail = len(df.reset_index().serial_number.unique()) - num_fail
-	pct_fail = num_fail / (num_not_fail + num_fail) * 100 
+    num_fail = df.failure.sum()
+    num_not_fail = len(df.reset_index().serial_number.unique()) - num_fail
+    pct_fail = num_fail / (num_not_fail + num_fail) * 100 
 
-	print('{} failed'.format(num_fail))
-	print('{} did not fail'.format(num_not_fail))
-	print('{:5f}% failed'.format(pct_fail))
-	return bad_missing_hds, bad_power_hds, df
+    print('{} failed'.format(num_fail))
+    print('{} did not fail'.format(num_not_fail))
+    print('{:5f}% failed'.format(pct_fail))
+    return bad_missing_hds, bad_power_hds, df
 
 def interpolate_ts(df, method='linear'):
     
@@ -396,10 +398,10 @@ def generate_failure_predictions(df, days, window):
             # np.ones(days) represents the period immediately before and including the failure
             # np.zeros(slicer_val - days) represents the period before the failure
             predictions = np.concatenate((np.zeros(slicer_val - days), np.ones(days)))
-			# create a validation array with 1s for the last 'days' days and 0s for the rest
+            # create a validation array with 1s for the last 'days' days and 0s for the rest
             valid = np.concatenate((np.zeros(slicer_val - days - window), np.ones(days + window)))
         else:
-			# if the HD did not fail, we set the prediction array to all 0s
+            # if the HD did not fail, we set the prediction array to all 0s
             predictions = np.zeros(slicer_val)
             valid = np.zeros(slicer_val)
         pred_list = np.concatenate((pred_list, predictions))
@@ -410,95 +412,95 @@ def generate_failure_predictions(df, days, window):
     return pred_list, valid_list
 
 def arrays_to_matrix(X, wind_dim):
-	"""
-	Reshapes the input array X into a matrix with a specified window dimension.
+    """
+    Reshapes the input array X into a matrix with a specified window dimension.
 
-	Parameters:
-	X (ndarray): The input array to be reshaped.
-	wind_dim (int): The window dimension for reshaping the array.
+    Parameters:
+    X (ndarray): The input array to be reshaped.
+    wind_dim (int): The window dimension for reshaping the array.
 
-	Returns:
-	ndarray: The reshaped matrix.
+    Returns:
+    ndarray: The reshaped matrix.
 
-	"""
-	X_new = X.reshape(X.shape[0], int(X.shape[1] / wind_dim), wind_dim)
-	return X_new
+    """
+    X_new = X.reshape(X.shape[0], int(X.shape[1] / wind_dim), wind_dim)
+    return X_new
 
 def feature_extraction(X):
-	"""
-	Extracts features from the input data.
+    """
+    Extracts features from the input data.
 
-	:param X (ndarray): Input data of shape (samples, features, dim_window).
+    :param X (ndarray): Input data of shape (samples, features, dim_window).
 
-	:return: ndarray: Extracted features of shape (samples, features, 4).
-	"""
-	print('Extracting Features')
-	samples, features, dim_window = X.shape
-	X_feature = np.ndarray((X.shape[0],X.shape[1], 4))
-	print('Sum')
-	# sum of all the features
-	X_feature[:,:,0] = np.sum((X), axis = 2)
-	print('Min')
-	# min of all the features
-	X_feature[:,:,1] = np.min((X), axis = 2)
-	print('Max')
-	# max of all the features
-	X_feature[:,:,2] = np.max((X), axis = 2)
-	print('Similar slope')
-	# Calculate the slope of the features
-	X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
-	'''
-	print('Slope')
-	for s in np.arange(samples):
-		for f in np.arange(features):
-			model = LinearRegression()
-			model.fit(np.arange(X.shape[2]).reshape(-1,1),X[s,f,:])
-			X_feature[s,f,3] = model.coef_
-			X_feature[s,f,4] = model.intercept_
-	'''
-	return X_feature
+    :return: ndarray: Extracted features of shape (samples, features, 4).
+    """
+    print('Extracting Features')
+    samples, features, dim_window = X.shape
+    X_feature = np.ndarray((X.shape[0],X.shape[1], 4))
+    print('Sum')
+    # sum of all the features
+    X_feature[:,:,0] = np.sum((X), axis = 2)
+    print('Min')
+    # min of all the features
+    X_feature[:,:,1] = np.min((X), axis = 2)
+    print('Max')
+    # max of all the features
+    X_feature[:,:,2] = np.max((X), axis = 2)
+    print('Similar slope')
+    # Calculate the slope of the features
+    X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
+    '''
+    print('Slope')
+    for s in np.arange(samples):
+        for f in np.arange(features):
+            model = LinearRegression()
+            model.fit(np.arange(X.shape[2]).reshape(-1,1),X[s,f,:])
+            X_feature[s,f,3] = model.coef_
+            X_feature[s,f,4] = model.intercept_
+    '''
+    return X_feature
 
 def factors(n):
-	"""
-	Returns a list of factors of the given number.
+    """
+    Returns a list of factors of the given number.
 
-	Parameters:
-	n (int): The number to find the factors of.
+    Parameters:
+    n (int): The number to find the factors of.
 
-	Returns:
-	list: A list of factors of the given number.
-	"""
-	factors = []
-	while n > 1:
-		for i in range(2, n + 1):
-			if n % i == 0:
-				n /= i
-				n = int(n)
-				factors.append(i)
-				break
-	return factors
+    Returns:
+    list: A list of factors of the given number.
+    """
+    factors = []
+    while n > 1:
+        for i in range(2, n + 1):
+            if n % i == 0:
+                n /= i
+                n = int(n)
+                factors.append(i)
+                break
+    return factors
 
 def under_sample(df, down_factor):
-	"""
-	Perform under-sampling on a DataFrame.
+    """
+    Perform under-sampling on a DataFrame.
 
-	Args:
-		df (pandas.DataFrame): The input DataFrame.
-		down_factor (int): The down-sampling factor.
+    Args:
+        df (pandas.DataFrame): The input DataFrame.
+        down_factor (int): The down-sampling factor.
 
-	Returns:
-		list: A list of indexes to be used for under-sampling.
+    Returns:
+        list: A list of indexes to be used for under-sampling.
 
-	"""
-	indexes = (
-		df.predict_val
-		.rolling(down_factor) # Create a rolling window of size down_factor over the 'predict_val' column
-		.max() # Find the maximum value in each window.
-		[((len(df) - 1) % down_factor):-7:down_factor]
-		.index
-		.tolist()
-	)
-	return indexes
+    """
+    indexes = (
+        df.predict_val
+        .rolling(down_factor) # Create a rolling window of size down_factor over the 'predict_val' column
+        .max() # Find the maximum value in each window.
+        [((len(df) - 1) % down_factor):-7:down_factor]
+        .index
+        .tolist()
+    )
+    return indexes
 
 def dataset_partitioning(df, model, overlap=0, rank='None', num_features=10, technique='random', test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing=5, oversample_undersample=0):
     """
@@ -647,7 +649,7 @@ def split_dataset(df, technique, test_train_perc, resampler_balancing, oversampl
     - oversample_undersample (int): The oversample/undersample value.
     - windowing (int): The windowing value.
     - window_dim (int): The window dimension.
-	- overlap (int): The overlap value for windowing.
+    - overlap (int): The overlap value for windowing.
 
     Returns:
     - Xtrain (ndarray): The training data.
@@ -674,7 +676,7 @@ def random_split(df, test_train_perc, resampler_balancing, oversample_undersampl
     - oversample_undersample (int): The oversample/undersample value.
     - windowing (int): The windowing value.
     - window_dim (int): The window dimension.
-	- overlap (int): The overlap value for windowing.
+    - overlap (int): The overlap value for windowing.
 
     Returns:
     - Xtrain (ndarray): The training data.
@@ -939,97 +941,97 @@ def date_split(df, test_train_perc, resampler_balancing, oversample_undersample,
     return balance_data(Xtrain, ytrain, Xtest, ytest, resampler_balancing, oversample_undersample, windowing)
 
 def feature_selection(df, num_features):
-	"""
-	Selects the top 'num_features' features from the given dataframe based on statistical tests.
+    """
+    Selects the top 'num_features' features from the given dataframe based on statistical tests.
 
-	Args:
-		df (pandas.DataFrame): The input dataframe.
-		num_features (int): The number of features to select.
+    Args:
+        df (pandas.DataFrame): The input dataframe.
+        num_features (int): The number of features to select.
 
-	Returns:
-		pandas.DataFrame: The dataframe with the selected features.
-	"""
+    Returns:
+        pandas.DataFrame: The dataframe with the selected features.
+    """
 
-	features = []
-	p = []
-	dict1 = {}
+    features = []
+    p = []
+    dict1 = {}
 
-	print('Feature selection')
+    print('Feature selection')
 
-	for feature in df.columns:
-		if 'raw' in feature:
-			print('Feature: {}'.format(feature))
+    for feature in df.columns:
+        if 'raw' in feature:
+            print('Feature: {}'.format(feature))
         
-			# (Not used) Pearson correlation to measure the linear relationship between two variables
-			correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
-			print('Pearson correlation: %.3f' % correlation)
-			
-			# T-test to compare the means of two groups of features
-			_, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
-			print('T-test p-value: %.3f' % p_val)
+            # (Not used) Pearson correlation to measure the linear relationship between two variables
+            correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
+            print('Pearson correlation: %.3f' % correlation)
+            
+            # T-test to compare the means of two groups of features
+            _, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
+            print('T-test p-value: %.3f' % p_val)
 
-			dict1[feature] = p_val
+            dict1[feature] = p_val
 
-	print('Sorting features')
+    print('Sorting features')
 
-	# Sort the features based on the p-values (item[1] is used to sort the dictionary by its value, and item[0] is used to sort by key)
-	features = {k: v for k, v in sorted(dict1.items(), key=lambda item: item[1])}
-	# Select the top 'num_features' features
-	features = pd.DataFrame(features.items(), index=features.keys()).dropna()
-	# Extract the feature names
-	features = features[:num_features][0].values
+    # Sort the features based on the p-values (item[1] is used to sort the dictionary by its value, and item[0] is used to sort by key)
+    features = {k: v for k, v in sorted(dict1.items(), key=lambda item: item[1])}
+    # Select the top 'num_features' features
+    features = pd.DataFrame(features.items(), index=features.keys()).dropna()
+    # Extract the feature names
+    features = features[:num_features][0].values
 
-	for feature in df.columns:
-		if 'smart' not in feature:
-			features = np.concatenate((features, np.asarray(feature).reshape(1,)))
+    for feature in df.columns:
+        if 'smart' not in feature:
+            features = np.concatenate((features, np.asarray(feature).reshape(1,)))
 
-	df = df[features]
-	return df
+    df = df[features]
+    return df
 
 if __name__ == '__main__':
-	features = {
-		'Xiao_et_al': [
-			'date',
-			'serial_number',
-			'model',
-			'failure',
-			'smart_1_normalized',
-			'smart_5_normalized',
-			'smart_5_raw',
-			'smart_7_normalized',
-			'smart_9_raw',
-			'smart_12_raw',
-			'smart_183_raw',
-			'smart_184_normalized',
-			'smart_184_raw',
-			'smart_187_normalized',
-			'smart_187_raw',
-			'smart_189_normalized',
-			'smart_193_normalized',
-			'smart_193_raw',
-			'smart_197_normalized',
-			'smart_197_raw',
-			'smart_198_normalized',
-			'smart_198_raw',
-			'smart_199_raw'
-		]
-	}
-	#dataset = dataset[features['Xiao_et_al']]
-	model = 'ST3000DM001'
-	years = ['2013', '2014', '2015', '2016', '2017']
-	df = import_data(years, model, features)
-	print(df.head())
-	for column in list(df):
-		missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
-		print('{:.<27}{}%'.format(column, missing))
-	# drop bad HDs
-	
-	bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=30)
-	df['predict_val'] = generate_failure_predictions(df, days=7) # define RUL piecewise
-	## -------- ##
-	# random: stratified without keeping time
-	# hdd --> separate different hdd
-	# temporal --> separate by time
-	Xtrain, Xtest, ytrain, ytest = dataset_partitioning(df, technique = 'random')
-	#method = 'linear'
-	#df = interpolate_ts(df, method=method)
+    features = {
+        'Xiao_et_al': [
+            'date',
+            'serial_number',
+            'model',
+            'failure',
+            'smart_1_normalized',
+            'smart_5_normalized',
+            'smart_5_raw',
+            'smart_7_normalized',
+            'smart_9_raw',
+            'smart_12_raw',
+            'smart_183_raw',
+            'smart_184_normalized',
+            'smart_184_raw',
+            'smart_187_normalized',
+            'smart_187_raw',
+            'smart_189_normalized',
+            'smart_193_normalized',
+            'smart_193_raw',
+            'smart_197_normalized',
+            'smart_197_raw',
+            'smart_198_normalized',
+            'smart_198_raw',
+            'smart_199_raw'
+        ]
+    }
+    #dataset = dataset[features['Xiao_et_al']]
+    model = 'ST3000DM001'
+    years = ['2013', '2014', '2015', '2016', '2017']
+    df = import_data(years, model, features)
+    print(df.head())
+    for column in list(df):
+        missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
+        print('{:.<27}{}%'.format(column, missing))
+    # drop bad HDs
+    
+    bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=30)
+    df['predict_val'] = generate_failure_predictions(df, days=7) # define RUL piecewise
+    ## -------- ##
+    # random: stratified without keeping time
+    # hdd --> separate different hdd
+    # temporal --> separate by time
+    Xtrain, Xtest, ytrain, ytest = dataset_partitioning(df, technique = 'random')
+    #method = 'linear'
+    #df = interpolate_ts(df, method=method)
