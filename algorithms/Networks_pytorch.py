@@ -123,18 +123,18 @@ class FPLSTM(nn.Module):
         return fc2_out
 
 ## this is the network used in the paper. It is a 1D conv with dilation
-class Net_paper(nn.Module):
+class TCN_Network(nn.Module):
     
     def __init__(self, history_signal, num_inputs):
         """
-        Initializes the Net_paper class.
+        Initializes the TCN_Network class.
 
         Args:
             history_signal (int): The length of the input signal history.
             num_inputs (int): The number of input features.
 
         """
-        super(Net_paper, self).__init__()
+        super(TCN_Network, self).__init__()
 
         # Dilated Convolution Block 0: 
         # - 1D Convolutional layer (Conv1d) with num_inputs input channels, 32 output channels, kernel size of 3, dilation of 2, and padding of 2.
@@ -249,7 +249,7 @@ def init_net(lr, history_signal, num_inputs):
     Returns:
         tuple: A tuple containing the initialized neural network model and optimizer.
     """
-    net = Net_paper(history_signal, num_inputs)
+    net = TCN_Network(history_signal, num_inputs)
     # Return a new optimizer object for the given model parameters
     optimizer = getattr(optim, 'Adam')(net.parameters(), lr=lr)
     if torch.cuda.is_available():
@@ -418,7 +418,7 @@ def test(Xtest, ytest, model):
     report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
     return predictions
 
-def net_train_validate(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, batch_size, lr):
+def net_train_validate_TCN(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, batch_size, lr):
     """
     Train and validate a neural network model using TCN architecture.
 
@@ -546,7 +546,7 @@ def test_LSTM(model, test_loader, Xtest_examples):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
                 test_loss, correct, Xtest_examples,
                 100. * correct / Xtest_examples))
-    report_metrics(test_labels, pred_labels, ['FDR','FAR','F1','recall', 'precision'])
+    report_metrics(test_labels, pred_labels, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
 
 def net_train_validate_LSTM(net, optimizer, train_loader, test_loader, epochs, Xtest_examples, Xtrain_examples, lr):
     """

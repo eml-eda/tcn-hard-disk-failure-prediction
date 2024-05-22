@@ -82,6 +82,27 @@ class tSMOTE:
             X_new[i] = X[row] + step * (nn_data[nn_num[row, col]] - X[row])
         return X_new
 
+    def check_neighbors_object(self, param_name, value, additional_neighbor=0):
+        """
+        Checks if the provided value is a NearestNeighbors instance or creates one if not.
+
+        Parameters:
+        - param_name (str): The name of the parameter being checked.
+        - value: The actual value provided for the parameter.
+        - additional_neighbor (int): Additional number of neighbors to configure in the NearestNeighbors instance.
+
+        Returns:
+        - NearestNeighbors: A configured NearestNeighbors instance.
+        """
+        if isinstance(value, NearestNeighbors):
+            nn = value
+        elif isinstance(value, int):
+            nn = NearestNeighbors(n_neighbors=value + additional_neighbor)
+        else:
+            raise ValueError(f"Invalid type for {param_name}. Expected NearestNeighbors instance or int, got {type(value)} instead.")
+        
+        return nn
+
     def fit_resample(self, X, y, times):
         """
         Fit the tSMOTE algorithm to the input data and resample the dataset.
@@ -103,7 +124,8 @@ class tSMOTE:
                 continue  # Not enough samples in the slice to apply SMOTE
 
             X_slice, y_slice = X[slice_indices], y[slice_indices]
-            nn = NearestNeighbors(n_neighbors=self.k_neighbors + 1).fit(X_slice)
+            nn = self.check_neighbors_object('n_neighbors', self.k_neighbors, additional_neighbor=1)
+            nn.fit(X_slice)
             nns = nn.kneighbors(X_slice, return_distance=False)[:, 1:]
 
             for class_sample in np.unique(y_slice):
@@ -125,6 +147,19 @@ class tSMOTE:
         return X_resampled, y_resampled
 
     def _define_sampling_strategy(self, class_counts):
+        """
+        Define the sampling strategy based on the given class counts.
+
+        Parameters:
+            class_counts (dict): A dictionary containing the counts of each class.
+
+        Returns:
+            dict: A dictionary representing the sampling strategy.
+
+        Raises:
+            None
+
+        """
         if isinstance(self.sampling_strategy, dict):
             return self.sampling_strategy
         elif isinstance(self.sampling_strategy, float):

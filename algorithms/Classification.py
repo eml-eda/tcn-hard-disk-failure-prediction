@@ -48,7 +48,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 		report_metrics(Y_test_real, prediction, metric)
 	elif classifier == 'TCN':
 		# Train and validate the network using TCN
-		net_train_validate(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
+		net_train_validate_TCN(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
 	elif classifier == 'LSTM':
 		# Train and validate the network using LSTM
 		train_dataset = FPLSTMDataset(X_train, Y_train)
