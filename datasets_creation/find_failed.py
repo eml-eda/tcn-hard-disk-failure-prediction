@@ -4,9 +4,10 @@ import numpy as np
 # import datetime
 from glob import glob
 
-# Define paths and directories
+# Define paths and directorie
 script_dir = os.path.dirname(os.path.abspath(__file__))
-base_path = os.path.normpath(os.path.join(script_dir, '..', '..', 'HDD_dataset'))
+# Update the direcotry of HDD_dataset, it is inside project folder, and now parallel with the 'algorithms' and 'datasets_creation' folders
+base_path = os.path.normpath(os.path.join(script_dir, '..', 'HDD_dataset'))
 data_dir = os.path.dirname(base_path)
 
 # Define the directories for each year
@@ -18,7 +19,7 @@ list_failed = []
 failed = False
 
 # Create temp directory
-temp_dir = os.path.join(script_dir, '..', 'temp')
+temp_dir = os.path.join(script_dir, '..', 'output')
 os.makedirs(temp_dir, exist_ok=True)
 
 # Process each year
@@ -44,7 +45,7 @@ for year in years:
         if failed:
             # Filter the failed hard drives
             model_chosen = model_chosen[model_chosen['failure'] == 1]
-            #print(f"Number of entries after filtering by failure: {len(model_chosen)}")
+            print(f"Number of entries after filtering by failure: {len(model_chosen)}")
 
         # Append serial numbers
         list_failed.extend(model_chosen['serial_number'].values)

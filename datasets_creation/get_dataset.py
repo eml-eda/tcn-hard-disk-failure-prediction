@@ -5,7 +5,9 @@ import zipfile
 
 base_url = 'https://f001.backblazeb2.com/file/Backblaze-Hard-Drive-Data/'
 script_dir = os.path.dirname(os.path.abspath(__file__))
-base_path = os.path.normpath(os.path.join(script_dir, '..', '..', 'HDD_dataset'))
+
+# Fix relative path of the downloaded dataset
+base_path = os.path.normpath(os.path.join(script_dir, '..', 'HDD_dataset'))
 years = [str(year) for year in range(2013, 2020)]  # Generating year list
 
 # zips contain different directory names or no directory at all, which causes

@@ -109,7 +109,9 @@ if __name__ == '__main__':
 	# here you can select the model. This is the one tested.
 	model = 'ST3000DM001'
 	#years = ['2016', '2017', '2018']
-	years = ['2014', '2015', '2016', '2017', '2018']
+	
+	# Correct years for the model
+	years = ['2013', '2014', '2015', '2016', '2017']
 	# many parameters that could be changed, both for unbalancing, for networks and for features.
 	windowing = 1
 	min_days_HDD = 115
@@ -123,7 +125,7 @@ if __name__ == '__main__':
 	balancing_normal_failed = 20
 	history_signal = 32
 	# type of classifier
-	classifier = 'LSTM'
+	classifier = 'TCN'
 	# if you extract features for RF for example. Not tested
 	perform_features_extraction = False
 	CUDA_DEV = "0"
@@ -133,7 +135,8 @@ if __name__ == '__main__':
 	overlap = 1
 
 	try:
-		df = pd.read_pickle(os.path.join('..', 'temp', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+		script_dir = os.path.dirname(os.path.abspath(__file__))
+		df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 	except:
 		if ranking == 'None':
 			df = import_data(years=years, model=model, name='iSTEP', features=features)

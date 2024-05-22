@@ -20,7 +20,7 @@ from sklearn.model_selection import train_test_split
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
 import scipy
-import pdb;pdb.set_trace()
+#import pdb;pdb.set_trace()
 import scipy.stats
 
 ## here there are many functions used inside Classification.py
@@ -262,10 +262,14 @@ def import_data(years, model, name, **args):
 	
 	"""
 	years_list = '_' + '_'.join(years)
-	file = os.path.join('..', 'temp', f'{model}{years_list}.pkl')
+
+    # Fix the directory name as output
+	script_dir = os.path.dirname(os.path.abspath(__file__))
+	file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}.pkl')
 
 	if not os.path.exists(file):
-		file = os.path.join('..', 'temp', f'{model}{years_list}_all.pkl')
+        # Fix the directory name
+		file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}_all.pkl')
 
 	try:
 		df = pd.read_pickle(file)
@@ -277,7 +281,8 @@ def import_data(years, model, name, **args):
 
 		for y in years:
 			print(f'Analyzing year {y}', end="\r")
-			for f in glob.glob(os.path.join(cwd, '..', '..', 'HDD_dataset', y, '*.csv')):
+            # Fix the directory name
+			for f in glob.glob(os.path.join(cwd, '..', 'HDD_dataset', y, '*.csv')):
 				try:
 					data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
 				except ValueError:
@@ -323,7 +328,11 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
         
 	bad_missing_hds = []
 	for serial_num, inner_df in df.groupby(level=0): # indentify HDs with too many missing values.
-		inner_df = inner_df.droplevel(level=0)
+		if isinstance(inner_df.index, pd.MultiIndex):
+			inner_df = inner_df.droplevel(level=0)
+		else:
+			print(f"inner_df: {inner_df}")
+			print(f"Warning: inner_df does not have a MultiIndex. Serial number: {serial_num}")
 		inner_df = inner_df.asfreq('D')
 		n_missing = max(inner_df.isna().rolling(time_window).sum().max())
 
@@ -559,7 +568,9 @@ def handle_windowing(df, model, window_dim, rank, num_features, overlap, windowi
         return df
 
     try:
-        windowed_df = pd.read_pickle(os.path.join('..', 'temp', f'{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl'))
+        # Absolute path to the current script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        windowed_df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl'))
         print('Loading the windowed dataset')
         return rename_columns(windowed_df)
     except FileNotFoundError:
@@ -1013,7 +1024,7 @@ if __name__ == '__main__':
 	}
 	#dataset = dataset[features['Xiao_et_al']]
 	model = 'ST3000DM001'
-	years = ['2013','2014','2015','2016','2017']
+	years = ['2013', '2014', '2015', '2016', '2017']
 	df = import_data(years, model, features)
 	print(df.head())
 	for column in list(df):

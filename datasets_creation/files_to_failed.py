@@ -5,7 +5,9 @@ import datetime
 
 # Define paths
 script_dir = os.path.dirname(os.path.abspath(__file__))
-base_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'HDD_dataset'))
+
+# Fix relative path required for the dataset
+base_path = os.path.abspath(os.path.join(script_dir, '..', 'HDD_dataset'))
 
 # Define the directories for each year
 year_dirs = {year: os.path.join(base_path, year) for year in map(str, range(2013, 2020))}
@@ -14,7 +16,8 @@ years = [str(year) for year in range(2013, 2018)]
 model = 'ST3000DM001'
 
 # Load the failed hard drives
-failed = set(np.load(os.path.join(script_dir, '..', 'temp', f'HDD_all_{model}.npy')))
+# Fix the reading of the failed hard drives' path to 'output' directory
+failed = set(np.load(os.path.join(script_dir, '..', 'output', f'HDD_all_{model}.npy')))
 
 database = pd.DataFrame()
 
@@ -43,4 +46,5 @@ for year in years:
             print('adding day ' + str(model_chosen['date'].values))
 
 # Save the database to a pickle file
-database.to_pickle(os.path.join(script_dir, '..', 'temp', f'All_failed_appended_{model}.pkl'))
+# Fix the saving of the appended database to 'output' directory
+database.to_pickle(os.path.join(script_dir, '..', 'output', f'All_failed_appended_{model}.pkl'))
