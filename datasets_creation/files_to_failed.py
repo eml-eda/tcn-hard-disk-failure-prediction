@@ -17,7 +17,7 @@ model = 'ST3000DM001'
 
 # Load the failed hard drives
 # Fix the reading of the failed hard drives' path to 'output' directory
-failed = set(np.load(os.path.join(script_dir, '..', 'output', f'HDD_all_{model}.npy')))
+# failed = set(np.load(os.path.join(script_dir, '..', 'output', f'HDD_all_{model}.npy')))
 
 database = pd.DataFrame()
 
