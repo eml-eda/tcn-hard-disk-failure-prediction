@@ -2,37 +2,7 @@ import os
 import shutil
 import wget
 import zipfile
-
-base_url = 'https://f001.backblazeb2.com/file/Backblaze-Hard-Drive-Data/'
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Fix relative path of the downloaded dataset
-base_path = os.path.normpath(os.path.join(script_dir, '..', 'HDD_dataset'))
-years = [str(year) for year in range(2013, 2020)]  # Generating year list
-
-# zips contain different directory names or no directory at all, which causes
-# unavoidable "spaghettiness" in the code
-suffixes = {
-    'data_2013.zip': '2013',
-    'data_2014.zip': '2014',
-    'data_2015.zip': '2015',
-    'data_Q1_2016.zip': None,
-    'data_Q2_2016.zip': None,
-    'data_Q3_2016.zip': None,
-    'data_Q4_2016.zip': None,
-    'data_Q1_2017.zip': None,
-    'data_Q2_2017.zip': None,
-    'data_Q3_2017.zip': None,
-    'data_Q4_2017.zip': None,
-    'data_Q1_2018.zip': None,
-    'data_Q2_2018.zip': None,
-    'data_Q3_2018.zip': None,
-    'data_Q4_2018.zip': None,
-    'data_Q1_2019.zip': None,
-    'data_Q2_2019.zip': None,
-    'data_Q3_2019.zip': None
-}
-
+from config import *
 
 def main(years, base_path):
     os.makedirs(base_path, exist_ok=True)
@@ -60,8 +30,6 @@ def main(years, base_path):
                         shutil.move(os.path.join(unzip_path, f),
                                 os.path.join(year_path, f))
                     os.rmdir(unzip_path)
-
-
 
 if __name__ == "__main__":
     main(years, base_path)

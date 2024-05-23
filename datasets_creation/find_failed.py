@@ -3,24 +3,9 @@ import pandas as pd
 import numpy as np
 # import datetime
 from glob import glob
+from config import *
 
-# Define paths and directorie
-script_dir = os.path.dirname(os.path.abspath(__file__))
-# Update the direcotry of HDD_dataset, it is inside project folder, and now parallel with the 'algorithms' and 'datasets_creation' folders
-base_path = os.path.normpath(os.path.join(script_dir, '..', 'HDD_dataset'))
-data_dir = os.path.dirname(base_path)
-
-# Define the directories for each year
-year_dirs = {str(year): os.path.join(base_path, str(year)) for year in range(2013, 2020)}
-
-years = [str(year) for year in range(2013, 2018)]
-model = 'ST3000DM001'
 list_failed = []
-failed = False
-
-# Create temp directory
-temp_dir = os.path.join(script_dir, '..', 'output')
-os.makedirs(temp_dir, exist_ok=True)
 
 # Process each year
 for year in years:
@@ -51,5 +36,4 @@ for year in years:
         list_failed.extend(model_chosen['serial_number'].values)
 
 # Save the list of failed or all hard drives
-suffix = 'failed' if failed else 'all'
-np.save(os.path.join(temp_dir, f'HDD_{suffix}_{model}'), list_failed)
+np.save(hdd_model_file_path, list_failed)
