@@ -502,443 +502,434 @@ def under_sample(df, down_factor):
     )
     return indexes
 
-def dataset_partitioning(df, model, overlap=0, rank='None', num_features=10, technique='random', test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing=5, oversample_undersample=0):
-    """
-    Partition the dataset into training and test sets.
+class DatasetPartitioner:
+    def __init__(self, df, model, overlap=0, rank='None', num_features=10, technique='random',
+                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing=5, oversample_undersample=0):
+        """
+        Initialize the DatasetPartitioner object.
 
-    Parameters:
-    - df (DataFrame): The input dataset.
-    - model (str): The name of the model.
-    - overlap (int): The overlap value for windowing (default: 0).
-    - rank (str): The rank value (default: 'None').
-    - num_features (int): The number of features (default: 10).
-    - technique (str): The partitioning technique (default: 'random').
-    - test_train_perc (float): The percentage of data to be used for testing (default: 0.2).
-    - windowing (int): The windowing value (default: 1).
-    - window_dim (int): The window dimension (default: 5).
-    - resampler_balancing (int): The resampler balancing value (default: 5).
-    - oversample_undersample (int): The oversample/undersample value (default: 0).
+        Parameters:
+        - df (DataFrame): The input dataset.
+        - model (str): The name of the model.
+        - overlap (int): The overlap value for windowing (default: 0).
+        - rank (str): The rank value (default: 'None').
+        - num_features (int): The number of features (default: 10).
+        - technique (str): The partitioning technique (default: 'random').
+        - test_train_perc (float): The percentage of data to be used for testing (default: 0.2).
+        - windowing (int): The windowing value (default: 1).
+        - window_dim (int): The window dimension (default: 5).
+        - resampler_balancing (int): The resampler balancing value (default: 5).
+        - oversample_undersample (int): The oversample/undersample value (default: 0).
 
-    Returns:
-    - Xtrain (ndarray): The training data.
-    - Xtest (ndarray): The test data.
-    - ytrain (Series): The training labels.
-    - ytest (Series): The test labels.
-    """
-    df.reset_index(inplace=True)
-    mms = MinMaxScaler(feature_range=(0, 1))
+        """
+        self.df = df
+        self.model = model
+        self.overlap = overlap
+        self.rank = rank
+        self.num_features = num_features
+        self.technique = technique
+        self.test_train_perc = test_train_perc
+        self.windowing = windowing
+        self.window_dim = window_dim
+        self.resampler_balancing = resampler_balancing
+        self.oversample_undersample = oversample_undersample
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.Xtrain, self.Xtest, self.ytrain, self.ytest = self.partition()
 
-    # Extract temporal data
-    temporal = df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
-    df.drop(columns=temporal.columns, inplace=True)
-    df = pd.DataFrame(mms.fit_transform(df), columns=df.columns, index=df.index)
-    df = pd.concat([df, temporal], axis=1)
+    def partition(self):
+        """
+        Partition the dataset into training and test sets.
 
-    windowed_df = handle_windowing(df, model, window_dim, rank, num_features, overlap, windowing)
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
 
-    print('Creating training and test dataset')
-    Xtrain, Xtest, ytrain, ytest = split_dataset(windowed_df, technique, test_train_perc, resampler_balancing, oversample_undersample, windowing, window_dim, overlap)
+        Returns:
+        - Xtrain (ndarray): The training data.
+        - Xtest (ndarray): The test data.
+        - ytrain (Series): The training labels.
+        - ytest (Series): The test labels.
+        """
+        self.df.reset_index(inplace=True)
+        mms = MinMaxScaler(feature_range=(0, 1))
 
-    return Xtrain, Xtest, ytrain, ytest
+        # Extract temporal data
+        temporal = self.df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
+        self.df.drop(columns=temporal.columns, inplace=True)
+        self.df = pd.DataFrame(mms.fit_transform(self.df), columns=self.df.columns, index=self.df.index)
+        self.df = pd.concat([self.df, temporal], axis=1)
 
+        windowed_df = self.handle_windowing()
 
-def handle_windowing(df, model, window_dim, rank, num_features, overlap, windowing):
-    """
-    Handle the windowing process for the dataset.
+        print('Creating training and test dataset')
+        return self.split_dataset(windowed_df)
 
-    Parameters:
-    - df (DataFrame): The input dataset.
-    - model (str): The name of the model.
-    - window_dim (int): The window dimension.
-    - rank (str): The rank value.
-    - num_features (int): The number of features.
-    - overlap (int): The overlap value for windowing.
-    - windowing (int): The windowing value.
+    def handle_windowing(self):
+        """
+        Handle the windowing process for the dataset.
 
-    Returns:
-    - DataFrame: The windowed dataset.
-    """
-    if windowing != 1:
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+
+        Returns:
+        - DataFrame: The windowed dataset.
+        """
+        if self.windowing != 1:
+            return self.df
+
+        try:
+            # Absolute path to the current script
+            windowed_df = pd.read_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
+            print('Loading the windowed dataset')
+            return self.rename_columns(windowed_df)
+        except FileNotFoundError:
+            print('Windowing the df')
+            return self.perform_windowing()
+
+    def rename_columns(self, df):
+        """
+        Rename the columns of the dataframe to avoid duplicates.
+
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
+
+        Returns:
+        - DataFrame: The dataframe with renamed columns.
+        """
+        cols = []
+        count = {}
+        for column in df.columns:
+            count[column] = 1
+        for column in df.columns:
+            if column in cols:
+                cols.append(f'{column}_{count[column]}')
+                count[column] += 1
+            else:
+                cols.append(column)
+        df.columns = cols
+        df.sort_index(axis=1, inplace=True)
         return df
 
-    try:
-        # Absolute path to the current script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        windowed_df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{window_dim}_rank_{rank}_{num_features}_overlap_{overlap}.pkl'))
-        print('Loading the windowed dataset')
-        return rename_columns(windowed_df)
-    except FileNotFoundError:
-        print('Windowing the df')
-        return perform_windowing(df, window_dim, overlap)
+    def perform_windowing(self):
+        """
+        Perform the windowing operation on the dataset.
 
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
 
-def rename_columns(df):
-    """
-    Rename the columns of the dataframe to avoid duplicates.
-
-    Parameters:
-    - df (DataFrame): The input dataframe.
-
-    Returns:
-    - DataFrame: The dataframe with renamed columns.
-    """
-    cols = []
-    count = {}
-    for column in df.columns:
-        count[column] = 1
-    for column in df.columns:
-        if column in cols:
-            cols.append(f'{column}_{count[column]}')
-            count[column] += 1
+        Returns:
+        - DataFrame: The windowed dataframe.
+        """
+        windowed_df = self.df.copy()
+        if self.overlap == 1:
+            for i in np.arange(self.window_dim - 1):
+                print(f'Concatenating time - {i} \r', end="\r")
+                # Shift the dataframe and concatenate along the columns
+                windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
         else:
-            cols.append(column)
-    df.columns = cols
-    df.sort_index(axis=1, inplace=True)
-    return df
+            # Get the factors of window_dim
+            window_dim_divisors = self.factors(self.window_dim)
+            k = 0
+            down_factor_old = 1
+            serials = self.df.serial_number
+            for down_factor in window_dim_divisors:
+                # Shift the dataframe by the factor and concatenate
+                for i in np.arange(down_factor - 1):
+                    k += down_factor_old
+                    print(f'Concatenating time - {k} \r', end="\r")
+                    windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                down_factor_old *= down_factor
+                # Under sample the dataframe based on the serial numbers and the factor
+                indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
+                # Update windowed_df based on the indexes
+                windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
+                # Update the original dataframe
+                self.df = windowed_df
+        # TODO: We need to test the generated file here
+        pd.read_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
+        return self.rename_columns(windowed_df)
 
+    def split_dataset(self, df):
+        """
+        Split the dataset into training and test sets based on the specified technique.
 
-def perform_windowing(df, window_dim, overlap):
-    """
-    Perform the windowing operation on the dataset.
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
 
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - window_dim (int): The window dimension.
-    - overlap (int): The overlap value for windowing.
+        Returns:
+        - Xtrain (ndarray): The training data.
+        - Xtest (ndarray): The test data.
+        - ytrain (Series): The training labels.
+        - ytest (Series): The test labels.
+        """
+        if self.technique == 'random':
+            return self.random_split(df)
+        elif self.technique == 'hdd':
+            return self.hdd_split(df)
+        else:
+            return self.date_split(df)
 
-    Returns:
-    - DataFrame: The windowed dataframe.
-    """
-    windowed_df = df.copy()
-    if overlap == 1:
-        for i in np.arange(window_dim - 1):
-            print(f'Concatenating time - {i} \r', end="\r")
-            # Shift the dataframe and concatenate along the columns
-            windowed_df = pd.concat([df.shift(i + 1), windowed_df], axis=1)
-    else:
-        # Get the factors of window_dim
-        window_dim_divisors = factors(window_dim)
-        k = 0
-        down_factor_old = 1
-        serials = df.serial_number
-        for down_factor in window_dim_divisors:
-            # Shift the dataframe by the factor and concatenate
-            for i in np.arange(down_factor - 1):
-                k += down_factor_old
-                print(f'Concatenating time - {k} \r', end="\r")
-                windowed_df = pd.concat([df.shift(i + 1), windowed_df], axis=1)
-            down_factor_old *= down_factor
-            # Under sample the dataframe based on the serial numbers and the factor
-            indexes = windowed_df.groupby(serials).apply(under_sample, down_factor)
-            # Update windowed_df based on the indexes
-            windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
-            # Update the original dataframe
-            df = windowed_df
-    return rename_columns(windowed_df)
+    def random_split(self, df):
+        """
+        Randomly split the dataset into training and test sets.
 
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
 
-def split_dataset(df, technique, test_train_perc, resampler_balancing, oversample_undersample, windowing, window_dim, overlap):
-    """
-    Split the dataset into training and test sets based on the specified technique.
+        Returns:
+        - Xtrain (ndarray): The training data.
+        - Xtest (ndarray): The test data.
+        - ytrain (Series): The training labels.
+        - ytest (Series): The test labels.
+        """
+        df = self.preprocess_random(df)
+        y = df['predict_val']
+        df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
+        X = df.values
 
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - technique (str): The partitioning technique.
-    - test_train_perc (float): The percentage of data to be used for testing.
-    - resampler_balancing (int): The resampler balancing value.
-    - oversample_undersample (int): The oversample/undersample value.
-    - windowing (int): The windowing value.
-    - window_dim (int): The window dimension.
-    - overlap (int): The overlap value for windowing.
+        if self.windowing == 1:
+            X = self.arrays_to_matrix(X)
+        Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
+        return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
-    Returns:
-    - Xtrain (ndarray): The training data.
-    - Xtest (ndarray): The test data.
-    - ytrain (Series): The training labels.
-    - ytest (Series): The test labels.
-    """
-    if technique == 'random':
-        return random_split(df, test_train_perc, resampler_balancing, oversample_undersample, windowing, window_dim, overlap)
-    elif technique == 'hdd':
-        return hdd_split(df, test_train_perc, resampler_balancing, oversample_undersample, windowing)
-    else:
-        return date_split(df, test_train_perc, resampler_balancing, oversample_undersample, windowing)
+    def preprocess_random(self, df):
+        """
+        Preprocess the dataset for random splitting.
 
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
 
-def random_split(df, test_train_perc, resampler_balancing, oversample_undersample, windowing, window_dim, overlap):
-    """
-    Randomly split the dataset into training and test sets.
+        Returns:
+        - DataFrame: The preprocessed dataframe.
+        """
+        if self.windowing != 1:
+            return df
 
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - test_train_perc (float): The percentage of data to be used for testing.
-    - resampler_balancing (int): The resampler balancing value.
-    - oversample_undersample (int): The oversample/undersample value.
-    - windowing (int): The windowing value.
-    - window_dim (int): The window dimension.
-    - overlap (int): The overlap value for windowing.
-
-    Returns:
-    - Xtrain (ndarray): The training data.
-    - Xtest (ndarray): The test data.
-    - ytrain (Series): The training labels.
-    - ytest (Series): The test labels.
-    """
-    df = preprocess_random(df, windowing, window_dim, overlap)
-    y = df['predict_val']
-    df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
-    X = df.values
-
-    if windowing == 1:
-        X = arrays_to_matrix(X, window_dim)
-    Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=test_train_perc, random_state=42)
-    return balance_data(Xtrain, ytrain, Xtest, ytest, resampler_balancing, oversample_undersample, windowing)
-
-
-def preprocess_random(df, windowing, window_dim, overlap):
-    """
-    Preprocess the dataset for random splitting.
-
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - windowing (int): The windowing value.
-    - window_dim (int): The window dimension.
-
-    Returns:
-    - DataFrame: The preprocessed dataframe.
-    """
-    if windowing != 1:
+        df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']
+        for i in range(self.window_dim - 1):
+            print(f'Dropping useless features of time - {i} \r', end="\r")
+            columns_to_drop = [f'{name}_{i + 1}' for name in ['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
+            df.drop(columns=columns_to_drop, inplace=True)
+        df.dropna(inplace=True)
+        df.set_index(['serial_number', 'date'], inplace=True)
+        df.sort_index(inplace=True)
+        indexes = self.get_invalid_indexes(df)
+        print('Dropping invalid windows ')
+        df.drop(indexes, inplace=True)
+        df.reset_index(inplace=True)
         return df
 
-    df['predict_val'] = df[f'predict_val_{window_dim - 1}']
-    for i in range(window_dim - 1):
-        print(f'Dropping useless features of time - {i} \r', end="\r")
-        columns_to_drop = [f'{name}_{i + 1}' for name in ['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
-        df.drop(columns=columns_to_drop, inplace=True)
-    df.dropna(inplace=True)
-    df.set_index(['serial_number', 'date'], inplace=True)
-    df.sort_index(inplace=True)
-    indexes = get_invalid_indexes(df, window_dim, overlap)
-    print('Dropping invalid windows ')
-    df.drop(indexes, inplace=True)
-    df.reset_index(inplace=True)
-    return df
+    def get_invalid_indexes(self, df):
+        """
+        Get the indexes of invalid windows in the dataframe.
 
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
 
-def get_invalid_indexes(df, window_dim, overlap):
-    """
-    Get the indexes of invalid windows in the dataframe.
+        Returns:
+        - list: The indexes of invalid windows.
+        """
+        indexes = []
+        for serial_num, inner_df in df.groupby(level=0):
+            print(f'Computing index of invalid windows of HD number {serial_num} \r', end="\r")
+            index_to_append = inner_df[:self.window_dim].index if self.overlap == 1 else inner_df[:1].index
+            indexes.append(index_to_append)
+        return indexes
 
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - window_dim (int): The window dimension.
+    def balance_data(self, Xtrain, ytrain, Xtest, ytest):
+        """
+        Balance the training data using undersampling or oversampling.
 
-    Returns:
-    - list: The indexes of invalid windows.
-    """
-    indexes = []
-    for serial_num, inner_df in df.groupby(level=0):
-        print(f'Computing index of invalid windows of HD number {serial_num} \r', end="\r")
-        index_to_append = inner_df[:window_dim].index if overlap == 1 else inner_df[:1].index
-        indexes.append(index_to_append)
-    return indexes
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - Xtrain (ndarray): The training data.
+        - ytrain (Series): The training labels.
+        - Xtest (ndarray): The test data.
+        - ytest (Series): The test labels.
 
+        Returns:
+        - Xtrain (ndarray): The balanced training data.
+        - Xtest (ndarray): The test data.
+        - ytrain (Series): The balanced training labels.
+        - ytest (Series): The test labels.
+        """
+        resampler = RandomUnderSampler(1 / self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(1 / self.resampler_balancing, random_state=42)
 
-def balance_data(Xtrain, ytrain, Xtest, ytest, resampler_balancing, oversample_undersample, windowing):
-    """
-    Balance the training data using undersampling or oversampling.
+        if self.oversample_undersample != 2:
+            Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler) if self.windowing else resampler.fit_resample(Xtrain, ytrain)
+        else:
+            ytrain = ytrain.astype(int)
+            ytest = ytest.astype(int)
+            ytrain = ytrain.values
 
-    Parameters:
-    - Xtrain (ndarray): The training data.
-    - ytrain (Series): The training labels.
-    - Xtest (ndarray): The test data.
-    - ytest (Series): The test labels.
-    - resampler_balancing (int): The resampler balancing value.
-    - oversample_undersample (int): The oversample/undersample value.
-    - windowing (int): The windowing value.
+        return Xtrain, Xtest, ytrain, ytest
 
-    Returns:
-    - Xtrain (ndarray): The balanced training data.
-    - Xtest (ndarray): The test data.
-    - ytrain (Series): The balanced training labels.
-    - ytest (Series): The test labels.
-    """
-    resampler = RandomUnderSampler(1 / resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(1 / resampler_balancing, random_state=42)
+    def resample_windowed_data(self, Xtrain, ytrain, rus):
+        """
+        Resample the windowed training data.
 
-    if oversample_undersample != 2:
-        Xtrain, ytrain = resample_windowed_data(Xtrain, ytrain, resampler) if windowing else resampler.fit_resample(Xtrain, ytrain)
-    else:
+        Parameters:
+        - Xtrain (ndarray): The training data.
+        - ytrain (Series): The training labels.
+        - rus: The resampling strategy.
+
+        Returns:
+        - Xtrain (ndarray): The resampled training data.
+        - ytrain (Series): The resampled training labels.
+        """
+        dim1 = Xtrain.shape[1]
+        dim2 = Xtrain.shape[2]
+        Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         ytrain = ytrain.astype(int)
+        Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
+        Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
         ytest = ytest.astype(int)
-        ytrain = ytrain.values
+        return Xtrain, ytrain
 
-    return Xtrain, Xtest, ytrain, ytest
+    def hdd_split(self, df):
+        """
+        Split the dataset based on HDD failure.
 
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
 
-def resample_windowed_data(Xtrain, ytrain, rus):
-    """
-    Resample the windowed training data.
+        Returns:
+        - Xtrain (ndarray): The training data.
+        - Xtest (ndarray): The test data.
+        - ytrain (Series): The training labels.
+        - ytest (Series): The test labels.
+        """
+        np.random.seed(0)
+        df.set_index(['serial_number', 'date'], inplace=True)
+        df.sort_index(inplace=True)
 
-    Parameters:
-    - Xtrain (ndarray): The training data.
-    - ytrain (Series): The training labels.
-    - rus: The resampling strategy.
+        failed, not_failed = self.get_failed_not_failed_drives(df)
+        test_failed, test_not_failed = self.get_test_drives(failed, not_failed)
+        test = test_failed + test_not_failed
+        train = self.get_train_drives(failed, not_failed, test)
 
-    Returns:
-    - Xtrain (ndarray): The resampled training data.
-    - ytrain (Series): The resampled training labels.
-    """
-    dim1 = Xtrain.shape[1]
-    dim2 = Xtrain.shape[2]
-    Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
-    ytrain = ytrain.astype(int)
-    Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
-    Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
-    ytest = ytest.astype(int)
-    return Xtrain, ytrain
+        df_train = df.loc[train, :].sort_index()
+        df_test = df.loc[test, :].sort_index()
+        df_train.reset_index(inplace=True)
+        df_test.reset_index(inplace=True)
 
+        ytrain = df_train.predict_val
+        ytest = df_test.predict_val
 
-def hdd_split(df, test_train_perc, resampler_balancing, oversample_undersample, windowing):
-    """
-    Split the dataset based on HDD failure.
+        df_train.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
+        df_test.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
 
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - test_train_perc (float): The percentage of data to be used for testing.
-    - resampler_balancing (int): The resampler balancing value.
-    - oversample_undersample (int): The oversample/undersample value.
-    - windowing (int): The windowing value.
+        Xtrain = df_train.values
+        Xtest = df_test.values
 
-    Returns:
-    - Xtrain (ndarray): The training data.
-    - Xtest (ndarray): The test data.
-    - ytrain (Series): The training labels.
-    - ytest (Series): The test labels.
-    """
-    np.random.seed(0)
-    df.set_index(['serial_number', 'date'], inplace=True)
-    df.sort_index(inplace=True)
+        if self.windowing == 1:
+            Xtrain = self.arrays_to_matrix(Xtrain)
+            Xtest = self.arrays_to_matrix(Xtest)
 
-    failed, not_failed = get_failed_not_failed_drives(df, windowing)
-    test_failed, test_not_failed = get_test_drives(failed, not_failed, test_train_perc)
-    test = test_failed + test_not_failed
-    train = get_train_drives(failed, not_failed, test)
+        return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
-    df_train = df.loc[train, :].sort_index()
-    df_test = df.loc[test, :].sort_index()
-    df_train.reset_index(inplace=True)
-    df_test.reset_index(inplace=True)
+    def get_failed_not_failed_drives(self, df):
+        """
+        Get the lists of failed and not failed drives.
 
-    ytrain = df_train.predict_val
-    ytest = df_test.predict_val
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - df (DataFrame): The input dataframe.
 
-    df_train.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
-    df_test.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
+        Returns:
+        - list: The list of failed drives.
+        - list: The list of not failed drives.
+        """
+        if self.windowing == 1:
+            failed = [h[0] for h in list(df[df.predict_val == 1].index)]
+        else:
+            failed = [h[0] for h in list(df[df.failure == 1].index)]
+        failed = list(set(failed))
 
-    Xtrain = df_train.values
-    Xtest = df_test.values
+        not_failed = [h[0] for h in list(df.index) if h[0] not in failed]
+        not_failed = list(set(not_failed))
+        return failed, not_failed
 
-    if windowing == 1:
-        Xtrain = arrays_to_matrix(Xtrain)
-        Xtest = arrays_to_matrix(Xtest)
+    def get_test_drives(self, failed, not_failed):
+        """
+        Get the test drives from the lists of failed and not failed drives.
 
-    return balance_data(Xtrain, ytrain, Xtest, ytest, resampler_balancing, oversample_undersample, windowing)
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - failed (list): The list of failed drives.
+        - not_failed (list): The list of not failed drives.
 
+        Returns:
+        - list: The list of failed test drives.
+        - list: The list of not failed test drives.
+        """
+        test_failed = list(np.random.choice(failed, size=int(len(failed) * self.test_train_perc)))
+        test_not_failed = list(np.random.choice(not_failed, size=int(len(not_failed) * self.test_train_perc)))
+        return test_failed, test_not_failed
 
-def get_failed_not_failed_drives(df, windowing):
-    """
-    Get the lists of failed and not failed drives.
+    def get_train_drives(self, failed, not_failed, test):
+        """
+        Get the training drives from the lists of failed and not failed drives.
 
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - windowing (int): The windowing value.
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        - failed (list): The list of failed drives.
+        - not_failed (list): The list of not failed drives.
+        - test (list): The list of test drives.
 
-    Returns:
-    - list: The list of failed drives.
-    - list: The list of not failed drives.
-    """
-    if windowing == 1:
-        failed = [h[0] for h in list(df[df.predict_val == 1].index)]
-    else:
-        failed = [h[0] for h in list(df[df.failure == 1].index)]
-    failed = list(set(failed))
+        Returns:
+        - list: The list of training drives.
+        """
+        train = failed + not_failed
+        train = list(filter(lambda x: x not in test, train))
+        return train
 
-    not_failed = [h[0] for h in list(df.index) if h[0] not in failed]
-    not_failed = list(set(not_failed))
-    return failed, not_failed
+    def date_split(self, df):
+        """
+        Split the dataset based on date.
 
+        Parameters:
+        - df (DataFrame): The input dataframe.
 
-def get_test_drives(failed, not_failed, test_train_perc):
-    """
-    Get the test drives from the lists of failed and not failed drives.
+        Returns:
+        - Xtrain (ndarray): The training data.
+        - Xtest (ndarray): The test data.
+        - ytrain (Series): The training labels.
+        - ytest (Series): The test labels.
+        """
+        df.set_index('date', inplace=True)
+        df.sort_index(inplace=True)
 
-    Parameters:
-    - failed (list): The list of failed drives.
-    - not_failed (list): The list of not failed drives.
-    - test_train_perc (float): The percentage of data to be used for testing.
+        y = df.predict_val
+        df.drop(columns=['serial_number', 'failure', 'predict_val'], inplace=True)
+        X = df.values
 
-    Returns:
-    - list: The list of failed test drives.
-    - list: The list of not failed test drives.
-    """
-    test_failed = list(np.random.choice(failed, size=int(len(failed) * test_train_perc)))
-    test_not_failed = list(np.random.choice(not_failed, size=int(len(not_failed) * test_train_perc)))
-    return test_failed, test_not_failed
+        split_idx = int(X.shape[0] * (1 - self.test_train_perc))
+        if self.windowing == 1:
+            Xtrain = X[:split_idx, :, :]
+            Xtest = X[split_idx:, :, :]
+        else:
+            Xtrain = X[:split_idx, :]
+            Xtest = X[split_idx:, :]
 
+        ytrain = y[:split_idx]
+        ytest = y[split_idx:]
 
-def get_train_drives(failed, not_failed, test):
-    """
-    Get the training drives from the lists of failed and not failed drives.
+        return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
-    Parameters:
-    - failed (list): The list of failed drives.
-    - not_failed (list): The list of not failed drives.
-    - test (list): The list of test drives.
+    def __iter__(self):
+        """
+        Return the training and test datasets.
 
-    Returns:
-    - list: The list of training drives.
-    """
-    train = failed + not_failed
-    train = list(filter(lambda x: x not in test, train))
-    return train
-
-
-def date_split(df, test_train_perc, resampler_balancing, oversample_undersample, windowing):
-    """
-    Split the dataset based on date.
-
-    Parameters:
-    - df (DataFrame): The input dataframe.
-    - test_train_perc (float): The percentage of data to be used for testing.
-    - resampler_balancing (int): The resampler balancing value.
-    - oversample_undersample (int): The oversample/undersample value.
-    - windowing (int): The windowing value.
-
-    Returns:
-    - Xtrain (ndarray): The training data.
-    - Xtest (ndarray): The test data.
-    - ytrain (Series): The training labels.
-    - ytest (Series): The test labels.
-    """
-    df.set_index('date', inplace=True)
-    df.sort_index(inplace=True)
-
-    y = df.predict_val
-    df.drop(columns=['serial_number', 'failure', 'predict_val'], inplace=True)
-    X = df.values
-
-    split_idx = int(X.shape[0] * (1 - test_train_perc))
-    if windowing == 1:
-        Xtrain = X[:split_idx, :, :]
-        Xtest = X[split_idx:, :, :]
-    else:
-        Xtrain = X[:split_idx, :]
-        Xtest = X[split_idx:, :]
-
-    ytrain = y[:split_idx]
-    ytest = y[split_idx:]
-
-    return balance_data(Xtrain, ytrain, Xtest, ytest, resampler_balancing, oversample_undersample, windowing)
+        Parameters:
+        - self (DatasetManager): The DatasetManager object.
+        """
+        return iter((self.Xtrain, self.Xtest, self.ytrain, self.ytest))
 
 def feature_selection(df, num_features):
     """
@@ -1032,6 +1023,6 @@ if __name__ == '__main__':
     # random: stratified without keeping time
     # hdd --> separate different hdd
     # temporal --> separate by time
-    Xtrain, Xtest, ytrain, ytest = dataset_partitioning(df, technique = 'random')
+    Xtrain, Xtest, ytrain, ytest = DatasetPartitioner(df, technique = 'random')
     #method = 'linear'
     #df = interpolate_ts(df, method=method)

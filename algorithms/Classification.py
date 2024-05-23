@@ -134,8 +134,9 @@ if __name__ == '__main__':
     num_features = 18
     overlap = 1
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
     except:
         if ranking == 'None':
@@ -155,13 +156,15 @@ if __name__ == '__main__':
             df = feature_selection(df, num_features)
         print('Used features')
         for column in list(df):
-            print('{:.<27}'.format(column,))	
-        ## -------- ##
-        # random: stratified without keeping timw
-        # hdd --> separate different hdd (need FIXes)
-        # temporal --> separate by time (need FIXes)
+            print('{:.<27}'.format(column,))
+        print('Saving to pickle file...')
+        df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
-    Xtrain, Xtest, ytrain, ytest = dataset_partitioning(
+    ## -------- ##
+    # random: stratified without keeping time order
+    # hdd --> separate different hdd (need FIXes)
+    # temporal --> separate by time (need FIXes)
+    Xtrain, Xtest, ytrain, ytest = DatasetPartitioner(
         df,
         model,
         overlap=overlap,

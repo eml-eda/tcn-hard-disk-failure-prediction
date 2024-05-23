@@ -18,5 +18,4 @@ for i, smart in enumerate(database.columns[4:], start=1):
     base[smart] = grouped[smart].apply(list)
 
 # Save the DataFrame
-# Rename dataset to [model]_[years]_[suffix].pkl 
 base.to_pickle(hdd_model_final_pkl_file_path)
