@@ -126,9 +126,9 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
 
 ## Core Parts of this Algorithm
 
-1. **Feature Selection**: Currently we use t-test for feature selection. We select the top 18 features based on the t-test scores.
+1. **Feature Selection**: Currently we use the t-test for feature selection. We select the top 18 features based on the t-test scores.
 2. **Dataset Unbalancing**: Currently we use SMOTE for data augmentation on the failed disk samples to balance the dataset, and use RandomUnderSampler for the majority class.
-3. **Data Training**: Currently we use RandomForest, TCN, and LSTM for training the data, and use "'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'" metrics to evaluate the model, according to the result, the TCN model performs better than the other models.
+3. **Data Training**: Currently we use RandomForest, TCN, and LSTM for training the data, and use 'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', and 'precision' metrics to evaluate the model, according to the result, the TCN model performs better than the other models.
 
 ## Future Work
 
