@@ -10,7 +10,8 @@
   - [Wiki](#wiki)
   - [How to run the code](#how-to-run-the-code)
   - [Core Parts of this Algorithm](#core-parts-of-this-algorithm)
-  - [Future Work](#future-work)
+  - [TODO](#todo)
+  - [Future Work for Algorithm](#future-work-for-algorithm)
 
 ## Introduction
 
@@ -130,7 +131,16 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
 2. **Dataset Unbalancing**: Currently we use SMOTE for data augmentation on the failed disk samples to balance the dataset, and use RandomUnderSampler for the majority class.
 3. **Data Training**: Currently we use RandomForest, TCN, and LSTM for training the data, and use 'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', and 'precision' metrics to evaluate the model, according to the result, the TCN model performs better than the other models.
 
-## Future Work
+## TODO
+
+1. [ ] Thoroughly test the code and fix the bugs.
+2. [ ] Add more comments to the code for better understanding, especially the parameters that need to be tuned.
+3. [ ] Store the data in PostgreSQL database instead of CSV files.
+4. [ ] Refactor the Python scripts in the `algorithm` folder using jupyter notebook, do not directly import the Python scripts in the `algorithm` folder.
+5. [ ] Add a visual interface for `dataset_creation.ipynb` for adjusting the parameters.
+6. [ ] Add multiple disk support for dataset input.
+
+## Future Work for Algorithm
 
 1. Use the Genetic Algorithm (provided by DEAP) before the t-test for the statistical significance of the selected features.
 2. Add multiple disk models for prediction. (Currently, we only have one disk model, ST4000DM000)
