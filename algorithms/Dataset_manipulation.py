@@ -25,6 +25,7 @@ import scipy.stats
 #
 import matplotlib.pyplot as plt
 
+
 ## here there are many functions used inside Classification.py
 
 
@@ -515,7 +516,7 @@ class DatasetPartitioner:
 
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
 
         Returns:
         - Xtrain (ndarray): The training data.
@@ -545,7 +546,7 @@ class DatasetPartitioner:
         Returns a list of factors of the given number.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - n (int): The number to find the factors of.
 
         Returns:
@@ -596,7 +597,7 @@ class DatasetPartitioner:
 
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
 
         Returns:
         - DataFrame: The windowed dataset.
@@ -621,44 +622,23 @@ class DatasetPartitioner:
         Rename the columns of the dataframe to avoid duplicates.
         --- Step 3: Prepare data for modeling.
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
         - DataFrame: The dataframe with renamed columns.
         """
 
-        """        
         cols = []
         count = {}
         for column in df.columns:
-            count[column] = 1
-        for column in df.columns:
-            if column in cols:
-                cols.append(f'{column}_{count[column]}')
-                count[column] += 1
-            else:
-                cols.append(column)
+            if column not in count:
+                count[column] = 0
+            count[column] += 1
+            new_column = f"{column}_{count[column]}" if count[column] > 1 else column
+            cols.append(new_column)
         df.columns = cols
         df.sort_index(axis=1, inplace=True)
-        return df
-        """
-        cols = []   # This will store the new column names
-        count = {}  # This dictionary tracks the number of times each column name has appeared
-
-        # Iterate through each column in the original DataFrame
-        for column in df.columns:
-            if column in count:
-                count[column] += 1
-                new_name = f"{column}_{count[column]}"  # Create a new name by appending the count
-            else:
-                count[column] = 1
-                new_name = column  # No need to modify the name if it's the first occurrence
-
-            cols.append(new_name)  # Append the new name to the list
-
-        df.columns = cols  # Update the DataFrame's columns with the new names
-        df.sort_index(axis=1, inplace=True)  # Optional: Sort the columns alphabetically
         return df
 
     def perform_windowing(self):
@@ -680,16 +660,16 @@ class DatasetPartitioner:
         else:
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)
-            k = 0
-            down_factor_old = 1
+            total_shifts = 0
+            previous_down_factor = 1
             serials = self.df.serial_number
-            for down_factor in window_dim_divisors:
+            for down_factor in window_dim_divisors: # window_dim_divisors = [2,2,2,2,2]
                 # Shift the dataframe by the factor and concatenate
                 for i in np.arange(down_factor - 1):
-                    k += down_factor_old
-                    print(f'Concatenating time - {k} \r', end="\r")
+                    total_shifts += previous_down_factor
+                    print(f'Concatenating time - {total_shifts} \r', end="\r")
                     windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
-                down_factor_old *= down_factor
+                previous_down_factor *= down_factor
                 # Under sample the dataframe based on the serial numbers and the factor
                 indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
                 # Update windowed_df based on the indexes
@@ -707,7 +687,7 @@ class DatasetPartitioner:
         --- Step 4: Technique selection.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -730,7 +710,7 @@ class DatasetPartitioner:
         --- Step 4.1: Random partitioning.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -756,7 +736,7 @@ class DatasetPartitioner:
         --- Step 4.1.1: Apply sampling technique.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -764,7 +744,6 @@ class DatasetPartitioner:
         """
         if self.windowing != 1:
             return df
-
         df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']    #FIXME:
         for i in range(self.window_dim - 1):
             print(f'Dropping useless features of time - {i} \r', end="\r")
@@ -784,7 +763,7 @@ class DatasetPartitioner:
         Get the indexes of invalid windows in the dataframe.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -804,7 +783,7 @@ class DatasetPartitioner:
         --- Step 5: Final Dataset Creation
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - Xtrain (ndarray): The training data.
         - ytrain (Series): The training labels.
         - Xtest (ndarray): The test data.
@@ -856,7 +835,7 @@ class DatasetPartitioner:
         --- Step 4.2: HDD partitioning.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -901,7 +880,7 @@ class DatasetPartitioner:
         Get the lists of failed and not failed drives.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -923,7 +902,7 @@ class DatasetPartitioner:
         Get the test drives from the lists of failed and not failed drives.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - failed (list): The list of failed drives.
         - not_failed (list): The list of not failed drives.
 
@@ -940,7 +919,7 @@ class DatasetPartitioner:
         Get the training drives from the lists of failed and not failed drives.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         - failed (list): The list of failed drives.
         - not_failed (list): The list of not failed drives.
         - test (list): The list of test drives.
@@ -996,7 +975,7 @@ class DatasetPartitioner:
         --- Step 6: Return the training and test datasets.
 
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
         """
         return iter((self.Xtrain, self.Xtest, self.ytrain, self.ytest))
 
