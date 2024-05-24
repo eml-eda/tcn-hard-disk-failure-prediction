@@ -22,7 +22,7 @@ from sklearn.utils import shuffle
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
     Perform classification using the specified classifier.
-
+    --- Step 1.7: Perform Classification
     Parameters:
     - X_train (array-like): Training data features.
     - Y_train (array-like): Training data labels.
@@ -39,18 +39,19 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     Y_test_real = []
     prediction = []
     if classifier == 'RandomForest':
-        # Train and validate the network using RandomForest
+        # Step 1.7.1: Perform Classification using RandomForest: Use RandomForest Libaray. Train and validate the network using RandomForest.
         X_train, Y_train = shuffle(X_train, Y_train)
+        # Use third-party RandomForest library.
         model = RandomForestClassifier(n_estimators=30, min_samples_split=10, random_state=3)
         model.fit(X_train[:, :], Y_train)
         prediction = model.predict(X_test)
         Y_test_real = Y_test
         report_metrics(Y_test_real, prediction, metric)
     elif classifier == 'TCN':
-        # Train and validate the network using TCN
+        # Step 1.7.2: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         net_train_validate_TCN(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
     elif classifier == 'LSTM':
-        # Train and validate the network using LSTM
+        # Step 1.7.3: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
         train_dataset = FPLSTMDataset(X_train, Y_train)
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
         test_dataset = FPLSTMDataset(X_test, Y_test.values)
@@ -59,6 +60,9 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         pass
 
 if __name__ == '__main__':
+    # ------------------ #
+    # Feature Selection Subflowchart 
+    # Step 1: Define empty lists and dictionary
     features = {
         'Xiao_et_al': [
             'date',
@@ -137,8 +141,10 @@ if __name__ == '__main__':
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     try:
+        # Step 1: Load the dataset from pkl file.
         df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
     except:
+        # Step 1.1: Import the dataset from the raw data.
         if ranking == 'None':
             df = import_data(years=years, model=model, name='iSTEP', features=features)
         else:
@@ -151,11 +157,14 @@ if __name__ == '__main__':
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
             print('{:.<27}{}%'.format(column, missing))
         # drop bad HDs
+        # Step 1.2: Filter out the bad HDDs.
         bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
         # predict_val represents the prediction value of the failure
         # validate_val represents the validation value of the failure
-        df['predict_val'], df['validate_val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal) # define RUL (remaining useful life) piecewise
+        # Step 1.3: Define RUL(Remain useful life) Piecewise
+        df['predict_val'], df['validate_val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal)
         if ranking != 'None':
+            # Step 1.4: Feature Selection: Subflow chart of Main Classification Process
             df = feature_selection(df, num_features)
         print('Used features')
         for column in list(df):
@@ -167,6 +176,7 @@ if __name__ == '__main__':
     # random: stratified without keeping time order
     # hdd --> separate different hdd (need FIXes)
     # temporal --> separate by time (need FIXes)
+    # Step 1.5: Partition the dataset into training and testing sets. Partition Dataset: Subflow chart of Main Classification Process
     Xtrain, Xtest, ytrain, ytest = DatasetPartitioner(
         df,
         model,
@@ -181,10 +191,13 @@ if __name__ == '__main__':
         oversample_undersample=oversample_undersample
     )
 
+    # Step 1.6: Classifier Selection: set training parameters
     ####### CLASSIFIER PARAMETERS #######
     if classifier == 'RandomForest':
+        # Step 1.6.1: Set training parameters for RamdomForest. Use RandomForest Libaray
         pass
     elif classifier == 'TCN':
+        # Step 1.6.2: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
         batch_size = 256
         lr = 0.001
@@ -192,6 +205,7 @@ if __name__ == '__main__':
         net, optimizer = init_net(lr, history_signal, num_inputs)
         epochs = 200
     elif classifier == 'LSTM':
+        # Step 1.6.3: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
         lr = 0.001
         batch_size = 256
         epochs = 300
@@ -208,11 +222,12 @@ if __name__ == '__main__':
         optimizer = optim.Adam(net.parameters(), lr=lr)
     ## ---------------------------- ##
 
-    if perform_features_extraction == True:
+    # Step x.1: Feature Extraction
+    if perform_features_extraction == True: 
         # Extract features for the train and test set
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)
-
+    # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
     if classifier == 'RandomForest' and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])

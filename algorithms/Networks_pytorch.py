@@ -124,7 +124,6 @@ class FPLSTM(nn.Module):
 
 ## this is the network used in the paper. It is a 1D conv with dilation
 class TCN_Network(nn.Module):
-    
     def __init__(self, history_signal, num_inputs):
         """
         Initializes the TCN_Network class.
@@ -297,7 +296,6 @@ def report_metrics(Y_test_real, prediction, metric):
 def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
     """
     Trains the model using the given training data and parameters.
-
     Args:
         ep (int): The current epoch number.
         Xtrain (numpy.ndarray): The input training data.
@@ -421,7 +419,7 @@ def test(Xtest, ytest, model):
 def net_train_validate_TCN(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, batch_size, lr):
     """
     Train and validate a neural network model using TCN architecture.
-
+    --- Step 1.7.2: Perform Classification using TCN. Subflowchart: TCN Subflowchart.
     Args:
         net (torch.nn.Module): The neural network model.
         optimizer (torch.optim.Optimizer): The optimizer used for training.

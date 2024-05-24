@@ -471,34 +471,16 @@ def feature_extraction(X):
     '''
     return X_feature
 
-def under_sample(df, down_factor):
-    """
-    Perform under-sampling on a DataFrame.
-
-    Args:
-        df (pandas.DataFrame): The input DataFrame.
-        down_factor (int): The down-sampling factor.
-
-    Returns:
-        list: A list of indexes to be used for under-sampling.
-
-    """
-    indexes = (
-        df.predict_val
-        .rolling(down_factor) # Create a rolling window of size down_factor over the 'predict_val' column
-        .max() # Find the maximum value in each window.
-        [((len(df) - 1) % down_factor):-7:down_factor]
-        .index
-        .tolist()
-    )
-    return indexes
 
 class DatasetPartitioner:
+    """
+        https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
+    """
     def __init__(self, df, model, overlap=0, rank='None', num_features=10, technique='random',
                  test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing=5, oversample_undersample=0):
         """
         Initialize the DatasetPartitioner object.
-
+        
         Parameters:
         - df (DataFrame): The input dataset.
         - model (str): The name of the model.
@@ -531,6 +513,7 @@ class DatasetPartitioner:
         """
         Partition the dataset into training and test sets.
 
+
         Parameters:
         - self (DatasetManager): The DatasetManager object.
 
@@ -540,8 +523,10 @@ class DatasetPartitioner:
         - ytrain (Series): The training labels.
         - ytest (Series): The test labels.
         """
-        self.df.reset_index(inplace=True)
-        mms = MinMaxScaler(feature_range=(0, 1))    #FIXME: 
+        self.df.reset_index(inplace=True) # Step 1.1: Reset index.
+
+        # Step 1.2: Preprocess the dataset.
+        mms = MinMaxScaler(feature_range=(0, 1)) # Normalize the dataset
 
         # Extract temporal data
         # Updated: temporal now also drops 'model' and 'capacity_bytes' columns, because they are object. We need float64.
@@ -555,29 +540,60 @@ class DatasetPartitioner:
         print('Creating training and test dataset')
         return self.split_dataset(windowed_df)
     
-    def factors(n):
+    def factors(self, n):
         """
         Returns a list of factors of the given number.
-        Moved into DatasetPartitioner class
+
         Parameters:
-        n (int): The number to find the factors of.
+        - self (DatasetManager): The DatasetManager object.
+        - n (int): The number to find the factors of.
 
         Returns:
         list: A list of factors of the given number.
         """
         factors = []
-        while n > 1:
-            for i in range(2, n + 1):
-                if n % i == 0:
-                    n /= i
-                    n = int(n)
-                    factors.append(i)
-                    break
+        # Check for the smallest prime factor 2
+        while n % 2 == 0:
+            factors.append(2)
+            n //= 2
+        # Check for odd factors from 3 upwards
+        factor = 3
+        while factor * factor <= n:
+            while n % factor == 0:
+                factors.append(factor)
+                n //= factor
+            factor += 2
+        # If n became a prime number greater than 2
+        if n > 1:
+            factors.append(n)
         return factors
+    
+    def under_sample(self, df, down_factor):
+        """
+        Perform under-sampling on a DataFrame.
+
+        Args:
+            df (pandas.DataFrame): The input DataFrame.
+            down_factor (int): The down-sampling factor.
+
+        Returns:
+            list: A list of indexes to be used for under-sampling.
+
+        """
+        indexes = (
+            df.predict_val
+            .rolling(down_factor) # Create a rolling window of size down_factor over the 'predict_val' column
+            .max() # Find the maximum value in each window.
+            [((len(df) - 1) % down_factor):-7:down_factor]
+            .index
+            .tolist()
+        )
+        return indexes
 
     def handle_windowing(self):
         """
         Handle the windowing process for the dataset.
+
 
         Parameters:
         - self (DatasetManager): The DatasetManager object.
@@ -585,22 +601,25 @@ class DatasetPartitioner:
         Returns:
         - DataFrame: The windowed dataset.
         """
+
+        # Step 2: Check Windowing
         if self.windowing != 1:
             return self.df
 
         try:
-            # Absolute path to the current script
+            # Step 2.1.1: If Yes, attempt to load the pre-processed windowed dataset.
             windowed_df = pd.read_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
             print('Loading the windowed dataset')
             return self.rename_columns(windowed_df)
         except FileNotFoundError:
+            # Step 2.1.2: If No, perform windowing on the dataset.
             print('Windowing the df')
             return self.perform_windowing()
 
     def rename_columns(self, df):
         """
         Rename the columns of the dataframe to avoid duplicates.
-
+        --- Step 3: Prepare data for modeling.
         Parameters:
         - self (DatasetManager): The DatasetManager object.
         - df (DataFrame): The input dataframe.
@@ -645,9 +664,9 @@ class DatasetPartitioner:
     def perform_windowing(self):
         """
         Perform the windowing operation on the dataset.
-
+        --- Step 2.1.2: Perform windowing on the dataset.
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetPartitioner object.
 
         Returns:
         - DataFrame: The windowed dataframe.
@@ -685,8 +704,10 @@ class DatasetPartitioner:
         """
         Split the dataset into training and test sets based on the specified technique.
 
+        --- Step 4: Technique selection.
+
         Parameters:
-        - self (DatasetManager): The DatasetManager object.
+        - self (DatasetPartitioner): The DatasetManager object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -696,15 +717,17 @@ class DatasetPartitioner:
         - ytest (Series): The test labels.
         """
         if self.technique == 'random':
-            return self.random_split(df)
+            return self.random_split(df) # Step 4.1: Random partitioning
         elif self.technique == 'hdd':
-            return self.hdd_split(df)
+            return self.hdd_split(df)  # Step 4.2: HDD partitioning
         else:
-            return self.date_split(df)
+            return self.date_split(df)  # Step 4.3: Other techniques
 
     def random_split(self, df):
         """
         Randomly split the dataset into training and test sets.
+
+        --- Step 4.1: Random partitioning.
 
         Parameters:
         - self (DatasetManager): The DatasetManager object.
@@ -729,6 +752,8 @@ class DatasetPartitioner:
     def preprocess_random(self, df):
         """
         Preprocess the dataset for random splitting.
+
+        --- Step 4.1.1: Apply sampling technique.
 
         Parameters:
         - self (DatasetManager): The DatasetManager object.
@@ -775,6 +800,8 @@ class DatasetPartitioner:
     def balance_data(self, Xtrain, ytrain, Xtest, ytest):
         """
         Balance the training data using undersampling or oversampling.
+
+        --- Step 5: Final Dataset Creation
 
         Parameters:
         - self (DatasetManager): The DatasetManager object.
@@ -826,6 +853,8 @@ class DatasetPartitioner:
         """
         Split the dataset based on HDD failure.
 
+        --- Step 4.2: HDD partitioning.
+
         Parameters:
         - self (DatasetManager): The DatasetManager object.
         - df (DataFrame): The input dataframe.
@@ -836,6 +865,8 @@ class DatasetPartitioner:
         - ytrain (Series): The training labels.
         - ytest (Series): The test labels.
         """
+
+        # Step 4.2.2: Apply Sampling Techniques.
         np.random.seed(0)
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
@@ -925,6 +956,8 @@ class DatasetPartitioner:
         """
         Split the dataset based on date.
 
+        --- Step 4.3: Other techniques.
+
         Parameters:
         - df (DataFrame): The input dataframe.
 
@@ -934,6 +967,8 @@ class DatasetPartitioner:
         - ytrain (Series): The training labels.
         - ytest (Series): The test labels.
         """
+
+        # Step 4.2.3: Apply Sampling Techniques.
         df.set_index('date', inplace=True)
         df.sort_index(inplace=True)
 
@@ -958,6 +993,8 @@ class DatasetPartitioner:
         """
         Return the training and test datasets.
 
+        --- Step 6: Return the training and test datasets.
+
         Parameters:
         - self (DatasetManager): The DatasetManager object.
         """
@@ -966,7 +1003,7 @@ class DatasetPartitioner:
 def feature_selection(df, num_features):
     """
     Selects the top 'num_features' features from the given dataframe based on statistical tests.
-
+    Step 1.4: Feature selection from Classification.py
     Args:
         df (pandas.DataFrame): The input dataframe.
         num_features (int): The number of features to select.
@@ -974,14 +1011,16 @@ def feature_selection(df, num_features):
     Returns:
         pandas.DataFrame: The dataframe with the selected features.
     """
-
+    # Step 1.4.1: Define empty lists and dictionary
     features = []
     p = []
     dict1 = {}
 
     print('Feature selection')
 
+    # Step 1.4.2: For each feature in df.columns
     for feature in df.columns:
+        # Step 1.4.2.1: if 'raw' in feature Perform T-test
         if 'raw' in feature:
             print('Feature: {}'.format(feature))
         
@@ -997,17 +1036,16 @@ def feature_selection(df, num_features):
 
     print('Sorting features')
 
-    # Sort the features based on the p-values (item[1] is used to sort the dictionary by its value, and item[0] is used to sort by key)
+    # Step 1.4.2.2: Sort the features based on the p-values (item[1] is used to sort the dictionary by its value, and item[0] is used to sort by key)
     features = {k: v for k, v in sorted(dict1.items(), key=lambda item: item[1])}
-    # Select the top 'num_features' features
+    # Step 1.4.2.3: Convert dictionary to DataFrame and drop NaNs
     features = pd.DataFrame(features.items(), index=features.keys()).dropna()
-    # Extract the feature names
+    # Step 1.4.2.4: Select top 'num_features' features
     features = features[:num_features][0].values
-
     for feature in df.columns:
         if 'smart' not in feature:
             features = np.concatenate((features, np.asarray(feature).reshape(1,)))
-
+    # Step 1.4.2.5: Update df to only include selected features
     df = df[features]
     return df
 
