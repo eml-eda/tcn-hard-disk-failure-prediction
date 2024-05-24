@@ -149,7 +149,6 @@ if __name__ == '__main__':
             df = import_data(years=years, model=model, name='iSTEP', features=features)
         else:
             df = import_data(years=years, model=model, name='iSTEP')
-        print("DF index name:", df.index.names)
         df.set_index(['serial_number', 'date'], inplace=True)
         print("DF index name:", df.index.names)
         print(df.head())
@@ -170,7 +169,7 @@ if __name__ == '__main__':
         for column in list(df):
             print('{:.<27}'.format(column,))
         print('Saving to pickle file...')
-        df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        #df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
     ## -------- ##
     # random: stratified without keeping time order

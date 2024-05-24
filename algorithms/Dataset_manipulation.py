@@ -24,8 +24,9 @@ import scipy
 import scipy.stats
 #
 import matplotlib.pyplot as plt
-
-
+#
+import sys
+import re
 ## here there are many functions used inside Classification.py
 
 
@@ -402,7 +403,7 @@ def generate_failure_predictions(df, days, window):
     valid_list = np.asarray([])
     i = 0
     for serial_num, inner_df in df.groupby(level=0):
-        print('Analizing HD {} number {} \r'.format(serial_num,i), end="\r")
+        print('Analyzing HD {} number {} \r'.format(serial_num,i), end="\r")
         slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9 
         i += 1
         if inner_df.failure.max() == 1:
@@ -525,6 +526,7 @@ class DatasetPartitioner:
         - ytest (Series): The test labels.
         """
         self.df.reset_index(inplace=True) # Step 1.1: Reset index.
+        print("DF index name:", self.df.index.names)
 
         # Step 1.2: Preprocess the dataset.
         mms = MinMaxScaler(feature_range=(0, 1)) # Normalize the dataset
@@ -533,7 +535,8 @@ class DatasetPartitioner:
         # Updated: temporal now also drops 'model' and 'capacity_bytes' columns, because they are object. We need float64.
         temporal = self.df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val', 'model', 'capacity_bytes']]
         self.df.drop(columns=temporal.columns, inplace=True)
-        self.df = pd.DataFrame(mms.fit_transform(self.df), columns=self.df.columns, index=self.df.index)  # FIXME: 
+        self.df = pd.DataFrame(mms.fit_transform(self.df),
+        columns=self.df.columns, index=self.df.index)  # FIXME: 
         self.df = pd.concat([self.df, temporal], axis=1)
 
         windowed_df = self.handle_windowing()
@@ -614,7 +617,7 @@ class DatasetPartitioner:
             return self.rename_columns(windowed_df)
         except FileNotFoundError:
             # Step 2.1.2: If No, perform windowing on the dataset.
-            print('Windowing the df')
+            print('Windowing the df')  # FIXME: Currently all columns are indexed.
             return self.perform_windowing()
 
     def rename_columns(self, df):
@@ -631,6 +634,7 @@ class DatasetPartitioner:
 
         cols = []
         count = {}
+        print('\nTEST', df.columns)
         for column in df.columns:
             if column not in count:
                 count[column] = 0
@@ -639,7 +643,130 @@ class DatasetPartitioner:
             cols.append(new_column)
         df.columns = cols
         df.sort_index(axis=1, inplace=True)
+
+        print('\nTest: ',count['predict_val']) 
         return df
+
+    # def process_in_chunks(self, down_factor=0, previous_down_factor=0, total_shifts=0):
+    #     chunk_size = 10000  # adjust this value to a size that fits comfortably in your memory
+    #     num_chunks = len(self.df) // chunk_size + 1
+
+    #     for chunk_id in range(num_chunks):
+    #         start = chunk_id * chunk_size
+    #         end = start + chunk_size
+    #         df_chunk = self.df.iloc[start:end].copy()
+
+    #         windowed_df = df_chunk.copy()
+    #         if down_factor != 0:
+    #             # for i in np.arange(down_factor - 1):
+    #             #     total_shifts += previous_down_factor
+    #             #     print(f'Concatenating time - {total_shifts}', end="\n")
+    #             #     windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+    #             total_shifts = 0
+    #             for i in np.arange(down_factor - 1):
+    #                 total_shifts += previous_down_factor
+    #                 print(f'Concatenating time - {total_shifts}', end="\n")
+    #                 try:
+    #                     shifted_df = df_chunk.shift(i + 1)
+    #                     windowed_df = pd.concat([shifted_df, windowed_df], axis=1)
+    #                     del shifted_df  # delete the temporary dataframe to free up memory
+    #                 except Exception as e:
+    #                     print(f"An error occurred: {e}")
+    #                 print(f'Finished iteration {i}')
+
+    #         else: 
+    #             for i in np.arange(self.window_dim - 1):
+    #                 print(f'Concatenating time - {i}', end="\n")
+    #                 try:
+    #                     shifted_df = df_chunk.shift(i + 1)
+    #                     windowed_df = pd.concat([shifted_df, windowed_df], axis=1)
+    #                     del shifted_df  # delete the temporary dataframe to free up memory
+    #                 except Exception as e:
+    #                     print(f"An error occurred: {e}")
+    #                 print(f'Finished iteration {i}')
+
+    #         # Write the windowed dataframe to a binary file
+    #         filename = f'windowed_df_{chunk_id}.pkl'
+    #         with open(filename, 'wb') as f:
+    #             pickle.dump(windowed_df, f)
+    #         print(f'Wrote chunk {chunk_id} to {filename}')
+
+    #     # Combine all the binary files into one dataframe
+    #     pkl_files = [f for f in os.listdir() if f.startswith('windowed_df_')]
+    #     df_combined = pd.concat((pickle.load(open(f, 'rb')) for f in pkl_files))
+
+    #     # Clean up the binary files
+    #     for f in pkl_files:
+    #         os.remove(f)
+
+    #     if down_factor != 0:
+    #         return df_combined
+    #     else:
+    #         return df_combined, down_factor
+    def process_in_chunks(self, down_factor=0):
+        """
+        Process the dataframe in chunks to avoid memory issues.
+
+        Parameters:
+        - self: The DatasetPartitioner object.
+        - down_factor: The downsample factor.
+
+        Returns:
+        - DataFrame: The processed dataframe.
+        - int: The downsample factor.
+        """
+        # Define the size of each chunk
+        chunk_size = 10000  # adjust this value to a size that fits comfortably in your memory
+
+        # Calculate the number of chunks
+        num_chunks = len(self.df) // chunk_size + 1
+
+        # Initialize an empty dataframe to store the combined result
+        df_combined = pd.DataFrame()
+
+        # Process each chunk
+        for chunk_id in range(num_chunks):
+            # Calculate the start and end indices for this chunk
+            start = chunk_id * chunk_size
+            end = start + chunk_size
+
+            # Extract the chunk from the dataframe
+            df_chunk = self.df.iloc[start:end].copy()
+
+            # Initialize a copy of the chunk to store the windowed result
+            windowed_df = df_chunk.copy()
+
+            # Determine the range of shifts based on the downsample factor
+            if down_factor != 0:
+                shift_range = np.arange(down_factor - 1)
+            else:
+                shift_range = np.arange(self.window_dim - 1)
+
+            # Perform the shifts and concatenation
+            for i in shift_range:
+                print(f'Concatenating time - {i}', end="\n")
+                try:
+                    # Shift the dataframe
+                    shifted_df = df_chunk.shift(i + 1)
+
+                    # Concatenate the shifted dataframe with the windowed dataframe
+                    windowed_df = pd.concat([shifted_df, windowed_df], axis=1)
+
+                    # Delete the temporary dataframe to free up memory
+                    del shifted_df
+                except Exception as e:
+                    # Print an error message if an exception occurs
+                    print(f"An error occurred: {type(e).__name__}, {e}")
+
+                print(f'Finished iteration {i}')
+
+            # Concatenate the windowed dataframe with the combined dataframe
+            df_combined = pd.concat([df_combined, windowed_df])
+
+            print(f'Processed chunk {chunk_id}')
+
+        # Return the combined dataframe and the downsample factor
+        return df_combined, down_factor if down_factor != 0 else df_combined
 
     def perform_windowing(self):
         """
@@ -653,22 +780,25 @@ class DatasetPartitioner:
         """
         windowed_df = self.df.copy()
         if self.overlap == 1:
-            for i in np.arange(self.window_dim - 1):
-                print(f'Concatenating time - {i} \r', end="\r")
+            # for i in np.arange(self.window_dim - 1):
+                # print(f'Concatenating time - {i}', end="\n") # To keep the last iteration info, change '\r' to '\n'
                 # Shift the dataframe and concatenate along the columns
-                windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1) #
+                # windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1) # We enter the "if" block, we will not have duplicate columns because we did not downsample
+            windowed_df = self.process_in_chunks()
         else:
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)
             total_shifts = 0
             previous_down_factor = 1
             serials = self.df.serial_number
+            # print("TEST window_dim_divisors", window_dim_divisors)
             for down_factor in window_dim_divisors: # window_dim_divisors = [2,2,2,2,2]
                 # Shift the dataframe by the factor and concatenate
-                for i in np.arange(down_factor - 1):
-                    total_shifts += previous_down_factor
-                    print(f'Concatenating time - {total_shifts} \r', end="\r")
-                    windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                # for i in np.arange(down_factor - 1):
+                #     total_shifts += previous_down_factor
+                #     print(f'Concatenating time - {total_shifts}', end="\n")
+                #     windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                windowed_df, down_factor = self.process_in_chunks(down_factor)
                 previous_down_factor *= down_factor
                 # Under sample the dataframe based on the serial numbers and the factor
                 indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
@@ -677,7 +807,8 @@ class DatasetPartitioner:
                 # Update the original dataframe
                 self.df = windowed_df
         # TODO: We need to test the generated file here
-        pd.read_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
+        # pd.read_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
+        print("Concatenating finished")
         return self.rename_columns(windowed_df)
 
     def split_dataset(self, df):
@@ -744,11 +875,17 @@ class DatasetPartitioner:
         """
         if self.windowing != 1:
             return df
-        df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']    #FIXME:
-        for i in range(self.window_dim - 1):
-            print(f'Dropping useless features of time - {i} \r', end="\r")
-            columns_to_drop = [f'{name}_{i + 1}' for name in ['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
-            df.drop(columns=columns_to_drop, inplace=True)
+        print(df.columns)
+        # df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']    #FIXME: If we did not downsample, there will be no duplicate columns. 
+        # Replace the 'predict_val' column with a new column 'predict_val' that contains the maximum value of the 'predict_val' columns
+        predict_val_cols = [col for col in df.columns if re.match(r'predict_val_\d+', col)]
+        df['predict_val'] = df[predict_val_cols].max(axis=1)
+
+        # FIXME: Drop the columns serial_number, date, failure, predict_val_0, predict_val_1, predict_val_2, predict_val_3, predict_val_4, validate_val_0, validate_val_1, validate_val_2, validate_val_3, validate_val_4
+        base_names = ['serial_number_', 'date_', 'failure_', 'predict_val_', 'validate_val_']
+        columns_to_drop = [col for col in df.columns if any(re.match(f"{base_name}\d+", col) for base_name in base_names)]
+        df.drop(columns=columns_to_drop, inplace=True)
+
         df.dropna(inplace=True)
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
