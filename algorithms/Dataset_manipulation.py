@@ -22,6 +22,8 @@ from imblearn.over_sampling import SMOTE
 import scipy
 #import pdb;pdb.set_trace()
 import scipy.stats
+#
+import matplotlib.pyplot as plt
 
 ## here there are many functions used inside Classification.py
 
@@ -261,15 +263,19 @@ def import_data(years, model, name, **args):
     :return: Dataframe with hard drive data.
     
     """
+
+    # Read the correct .pkl file
     years_list = '_' + '_'.join(years)
+    failed = False  # This should be set based on your specific criteria or kept as a placeholder
+    suffix = 'failed' if failed else 'all'
 
     # Fix the directory name as output
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}.pkl')
+    file = os.path.join(script_dir, '..', 'output', f'HDD{years_list}_{suffix}_{model}_appended.pkl')
 
     if not os.path.exists(file):
         # Fix the directory name
-        file = os.path.join(script_dir, '..', 'output', f'{model}{years_list}_all.pkl')
+        file = os.path.join(script_dir, '..', 'output', f'HDD{years_list}_{model}_all.pkl')
 
     try:
         df = pd.read_pickle(file)
@@ -328,13 +334,18 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
 
         inner_df = inner_df.droplevel(level=0)
         inner_df = inner_df.asfreq('D')  # Convert inner_df to daily frequency
-        # Find the maximum number of missing values within any window of time_window days in any column of the DataFrame
-        n_missing = max(inner_df.isna().rolling(time_window).sum().max())
 
-        if n_missing >= tolerance:  # identify HDs with too many missing values
-            bad_missing_hds.append(serial_num)
+        # Find the maximum number of missing values within any window of time_window days in any column of the DataFrame
+        # Commented out to avoid to many missing values
+        # n_missing = max(inner_df.isna().rolling(time_window).sum().max()) # original code DO NOT CHANGE
+
+        # if n_missing >= tolerance:  # identify HDs with too many missing values #original code DO NOT CHANGE
+        #     bad_missing_hds.append(serial_num) # original code DO NOT CHANGE
+
+
 
     bad_hds = set(bad_missing_hds + bad_power_hds)
+    print(f"Filter result: bad_missing_hds: {len(bad_missing_hds)}, bad_power_hds: {len(bad_power_hds)}")
     hds_remove = len(bad_hds)
     hds_total = len(df.reset_index().serial_number.unique())
     print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove / hds_total * 100, 2)))
@@ -460,26 +471,6 @@ def feature_extraction(X):
     '''
     return X_feature
 
-def factors(n):
-    """
-    Returns a list of factors of the given number.
-
-    Parameters:
-    n (int): The number to find the factors of.
-
-    Returns:
-    list: A list of factors of the given number.
-    """
-    factors = []
-    while n > 1:
-        for i in range(2, n + 1):
-            if n % i == 0:
-                n /= i
-                n = int(n)
-                factors.append(i)
-                break
-    return factors
-
 def under_sample(df, down_factor):
     """
     Perform under-sampling on a DataFrame.
@@ -550,18 +541,39 @@ class DatasetPartitioner:
         - ytest (Series): The test labels.
         """
         self.df.reset_index(inplace=True)
-        mms = MinMaxScaler(feature_range=(0, 1))
+        mms = MinMaxScaler(feature_range=(0, 1))    #FIXME: 
 
         # Extract temporal data
-        temporal = self.df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]
+        # Updated: temporal now also drops 'model' and 'capacity_bytes' columns, because they are object. We need float64.
+        temporal = self.df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val', 'model', 'capacity_bytes']]
         self.df.drop(columns=temporal.columns, inplace=True)
-        self.df = pd.DataFrame(mms.fit_transform(self.df), columns=self.df.columns, index=self.df.index)
+        self.df = pd.DataFrame(mms.fit_transform(self.df), columns=self.df.columns, index=self.df.index)  # FIXME: 
         self.df = pd.concat([self.df, temporal], axis=1)
 
         windowed_df = self.handle_windowing()
 
         print('Creating training and test dataset')
         return self.split_dataset(windowed_df)
+    
+    def factors(n):
+        """
+        Returns a list of factors of the given number.
+        Moved into DatasetPartitioner class
+        Parameters:
+        n (int): The number to find the factors of.
+
+        Returns:
+        list: A list of factors of the given number.
+        """
+        factors = []
+        while n > 1:
+            for i in range(2, n + 1):
+                if n % i == 0:
+                    n /= i
+                    n = int(n)
+                    factors.append(i)
+                    break
+        return factors
 
     def handle_windowing(self):
         """
@@ -596,6 +608,8 @@ class DatasetPartitioner:
         Returns:
         - DataFrame: The dataframe with renamed columns.
         """
+
+        """        
         cols = []
         count = {}
         for column in df.columns:
@@ -608,6 +622,24 @@ class DatasetPartitioner:
                 cols.append(column)
         df.columns = cols
         df.sort_index(axis=1, inplace=True)
+        return df
+        """
+        cols = []   # This will store the new column names
+        count = {}  # This dictionary tracks the number of times each column name has appeared
+
+        # Iterate through each column in the original DataFrame
+        for column in df.columns:
+            if column in count:
+                count[column] += 1
+                new_name = f"{column}_{count[column]}"  # Create a new name by appending the count
+            else:
+                count[column] = 1
+                new_name = column  # No need to modify the name if it's the first occurrence
+
+            cols.append(new_name)  # Append the new name to the list
+
+        df.columns = cols  # Update the DataFrame's columns with the new names
+        df.sort_index(axis=1, inplace=True)  # Optional: Sort the columns alphabetically
         return df
 
     def perform_windowing(self):
@@ -625,7 +657,7 @@ class DatasetPartitioner:
             for i in np.arange(self.window_dim - 1):
                 print(f'Concatenating time - {i} \r', end="\r")
                 # Shift the dataframe and concatenate along the columns
-                windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1) #
         else:
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)
@@ -708,7 +740,7 @@ class DatasetPartitioner:
         if self.windowing != 1:
             return df
 
-        df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']
+        df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']    #FIXME:
         for i in range(self.window_dim - 1):
             print(f'Dropping useless features of time - {i} \r', end="\r")
             columns_to_drop = [f'{name}_{i + 1}' for name in ['serial_number', 'date', 'failure', 'predict_val', 'validate_val']]

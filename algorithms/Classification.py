@@ -143,6 +143,9 @@ if __name__ == '__main__':
             df = import_data(years=years, model=model, name='iSTEP', features=features)
         else:
             df = import_data(years=years, model=model, name='iSTEP')
+        print("DF index name:", df.index.names)
+        df.set_index(['serial_number', 'date'], inplace=True)
+        print("DF index name:", df.index.names)
         print(df.head())
         for column in list(df):
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
