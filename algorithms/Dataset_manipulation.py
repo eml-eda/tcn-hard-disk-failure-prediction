@@ -22,10 +22,6 @@ from imblearn.over_sampling import SMOTE
 import scipy
 #import pdb;pdb.set_trace()
 import scipy.stats
-#
-import matplotlib.pyplot as plt
-#
-import sys
 import re
 import dask.dataframe as dd
 ## here there are many functions used inside Classification.py
@@ -643,12 +639,13 @@ class DatasetPartitioner:
         # Convert the initial DataFrame to a Dask DataFrame for heavy operations
         chunk_columns = 100000
         windowed_df = dd.from_pandas(self.df.copy(), npartitions=int(len(self.df)/chunk_columns) + 1)
-        if self.overlap == 1:
+        if self.overlap == 1:  # If the overlap option is chosed as complete overlap
+            # The following code will generate self.window_dim - 1 columns for each column in the dataset
             for i in np.arange(self.window_dim - 1):
                 print(f'Concatenating time - {i} \r', end="\r")
                 # Shift the dataframe and concatenate along the columns
                 windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
-        else:
+        elif self.overlap == 2:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)  # output: [2, 2, 2, 2, 2]
             total_shifts = 0
@@ -668,10 +665,39 @@ class DatasetPartitioner:
                 indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
                 # Update windowed_df based on the indexes
                 windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
-
-
                 # Convert back to Dask DataFrame
                 windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
+        else:  # If the overlap is other value, then we only completely overlap the dataset for the failed HDDs, and dynamically overlap the dataset for the good HDDs
+            # Get the factors of window_dim
+            window_dim_divisors = self.factors(self.window_dim)  # output: [2, 2, 2, 2, 2]
+            total_shifts = 0
+            previous_down_factor = 1
+            serials = self.df['serial_number']
+            df_failed = df[df['predict_val']==1]
+            windowed_df_failed = df_failed
+            for i in np.arange(self.window_dim - 1):
+                print(f'Concatenating time - {i} \r', end="\r")
+                # Shift the dataframe and concatenate along the columns
+                windowed_df_failed = dd.concat([self.df.shift(i + 1), windowed_df_failed], axis=1)
+            for down_factor in window_dim_divisors:
+                # Shift the dataframe by the factor and concatenate
+                for i in np.arange(down_factor - 1):
+                    total_shifts += previous_down_factor
+                    print(f'Concatenating time - {total_shifts} \r', end="\r")
+                    windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                previous_down_factor *= down_factor
+
+                # Compute intermediate result to apply sampling
+                windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
+                # Under sample the dataframe based on the serial numbers and the factor
+                indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
+                # Update windowed_df based on the indexes
+                windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
+                # Convert back to Dask DataFrame
+                windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
+
+            windowed_df = windowed_df.append(windowed_df_failed)
+            windowed_df.reset_index(inplace=True,drop=True)
 
         # Compute the final Dask DataFrame to pandas DataFrame
         final_df = windowed_df.compute()
@@ -744,7 +770,12 @@ class DatasetPartitioner:
         print('\n----------Number of columns', df.shape[1])
 
         if self.windowing == 1:
-            X = self.arrays_to_matrix(X, self.window_dim)   # FIXME: The final problem is window_dim.
+            if self.overlap == 1:  # If the overlap option is chosed as complete overlap
+                X = self.arrays_to_matrix(X, self.window_dim)   # FIXME: The final problem is window_dim.
+            else:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
+                data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
+                X = self.arrays_to_matrix(X, data_dim)   # FIXME: The final problem is window_dim.
+
         Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
         return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
@@ -803,28 +834,29 @@ class DatasetPartitioner:
 
         # Drop missing value columns - dropped the rows based on missing values
         df.dropna(axis='columns', inplace=True)
-        df.set_index(['serial_number', 'date'], inplace=True)  # FIXME:
+        df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
-        print('\n-----------------------------')
-        print('\n--df.head:', df.head())
 
+        print('Dropping invalid windows ')
         # Define the keyword as a variable, which could be 'raw' or 'normalized'
         keyword = 'raw'
+        
+        # self.windowing == 1 means that the input array will be divided into multiple windows which stores the same column, so we do not need to drop multiple columns
+        # self.windowing != 1 means that the input array will not be divided into multiple windows, so we need to drop multiple columns
+        if self.windowing != 1:
+            # Pattern to find columns that match 'smart_{attributes_digit}_raw' followed by an additional suffix (such as smart_1_raw_1)
+            pattern_to_drop = rf'^smart_\d+_{keyword}_\d+$'
 
-        # Pattern to find columns that match 'smart_{attributes_digit}_raw' followed by an additional suffix (such as smart_1_raw_1)
-        pattern_to_drop = rf'^smart_\d+_{keyword}_\d+$'
+            # Identify columns to drop
+            columns_to_drop = [col for col in df.columns if re.match(pattern_to_drop, col)]
 
-        # Identify columns to drop
-        columns_to_drop = [col for col in df.columns if re.match(pattern_to_drop, col)]
-
-        # Drop these columns from the DataFrame
-        df.drop(columns=columns_to_drop, inplace=True)
+            # Drop these columns from the DataFrame
+            df.drop(columns=columns_to_drop, inplace=True)
 
         print(df.columns)
 
         # indexes = self.get_invalid_indexes(df)
-        print('Dropping invalid windows ')
-        # df.drop(indexes, inplace=True) # FIXME: 
+        # df.drop(indexes, inplace=True) # BUG:
         df.reset_index(inplace=True)
         
         return df
@@ -941,8 +973,13 @@ class DatasetPartitioner:
         Xtest = df_test.values
 
         if self.windowing == 1:
-            Xtrain = self.arrays_to_matrix(Xtrain, self.window_dim)
-            Xtest = self.arrays_to_matrix(Xtest, self.window_dim)
+            if self.overlap == 1:  # If the overlap option is chosed as complete overlap
+                Xtrain = self.arrays_to_matrix(Xtrain, self.window_dim)
+                Xtest = self.arrays_to_matrix(Xtest, self.window_dim)
+            else:  # If the overlap option chosed as dynamic overlap based on the factors of window_dim
+                data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
+                Xtrain = self.arrays_to_matrix(Xtrain, data_dim)
+                Xtest = self.arrays_to_matrix(Xtest, data_dim)
 
         return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
