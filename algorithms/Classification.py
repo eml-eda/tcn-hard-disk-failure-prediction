@@ -1,11 +1,8 @@
 import os
 import pandas as pd
-# import datetime
 # import numpy as np
-from numpy import *
 # import math
 # import pickle
-# from scipy.stats.stats import pearsonr
 # import matplotlib.pyplot as plt
 import sys
 # import argparse

@@ -1,10 +1,7 @@
 import pandas as pd
-# import datetime
 import numpy as np
-from numpy import *
 import math
 import pickle
-# from scipy.stats.stats import pearsonr
 # import sys
 # from sklearn.utils import shuffle
 import os
@@ -20,10 +17,10 @@ from sklearn.model_selection import train_test_split
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
 import scipy
-#import pdb;pdb.set_trace()
 import scipy.stats
 import re
 import dask.dataframe as dd
+from collections import Counter
 ## here there are many functions used inside Classification.py
 
 
@@ -243,7 +240,7 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
             X_test, Y_test, HD_number_test = X_test[non_nan_test], Y_test[non_nan_test], HD_number_test[non_nan_test]
 
             # Resampling
-            resampler = RandomUnderSampler(1 / resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(1 / resampler_balancing, random_state=42)
+            resampler = RandomUnderSampler(sampling_strategy=1 / resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(sampling_strategy=1 / resampler_balancing, random_state=42)
             X_train, Y_train = resampler.fit_resample(X_train, Y_train)
 
             dataset = {'X_train': X_train, 'Y_train': Y_train, 'X_test': X_test, 'Y_test': Y_test, 'HDn_test': HD_number_test}
@@ -725,11 +722,77 @@ class DatasetPartitioner:
         - ytest (Series): The test labels.
         """
         if self.technique == 'random':
-            return self.random_split(df) # Step 4.1: Random partitioning
+            df = self.preprocess_random(df)
+            y = df['predict_val']   # y represents the prediction value
+            df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
+            X = df.values   # X represents the smart features
+            print('\n----------Number of columns', df.shape[1])
+
+            if self.windowing == 1:
+                if self.overlap == 1:  # If the overlap option is chosed as complete overlap
+                    X = self.arrays_to_matrix(X, self.window_dim)   # FIXME: The final problem is window_dim.
+                else:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
+                    data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
+                    X = self.arrays_to_matrix(X, data_dim)   # FIXME: The final problem is window_dim.
+            print('Augmented data of predict_val is: ', Counter(y))
+            Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
+            return self.balance_data(Xtrain, ytrain, Xtest, ytest) 
+        
         elif self.technique == 'hdd':
-            return self.hdd_split(df)  # Step 4.2: HDD partitioning
+            # Step 4.2.2: Apply Sampling Techniques.
+            np.random.seed(0)
+            df.set_index(['serial_number', 'date'], inplace=True)
+            df.sort_index(inplace=True)
+
+            failed, not_failed = self.get_failed_not_failed_drives(df)
+            test_failed, test_not_failed = self.get_test_drives(failed, not_failed)
+            test = test_failed + test_not_failed
+            train = self.get_train_drives(failed, not_failed, test)
+
+            df_train = df.loc[train, :].sort_index()
+            df_test = df.loc[test, :].sort_index()
+            df_train.reset_index(inplace=True)
+            df_test.reset_index(inplace=True)
+
+            ytrain = df_train.predict_val
+            ytest = df_test.predict_val
+
+            df_train.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
+            df_test.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
+
+            Xtrain = df_train.values
+            Xtest = df_test.values
+
+            if self.windowing == 1:
+                if self.overlap == 1:  # If the overlap option is chosed as complete overlap
+                    Xtrain = self.arrays_to_matrix(Xtrain, self.window_dim)
+                    Xtest = self.arrays_to_matrix(Xtest, self.window_dim)
+                else:  # If the overlap option chosed as dynamic overlap based on the factors of window_dim
+                    data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
+                    Xtrain = self.arrays_to_matrix(Xtrain, data_dim)
+                    Xtest = self.arrays_to_matrix(Xtest, data_dim)
+            return self.balance_data(Xtrain, ytrain, Xtest, ytest)
+        
         else:
-            return self.date_split(df)  # Step 4.3: Other techniques
+            # Step 4.2.3: Apply Sampling Techniques.
+            df.set_index('date', inplace=True)
+            df.sort_index(inplace=True)
+
+            y = df.predict_val
+            df.drop(columns=['serial_number', 'failure', 'predict_val'], inplace=True)
+            X = df.values
+
+            split_idx = int(X.shape[0] * (1 - self.test_train_perc))
+            if self.windowing == 1:
+                Xtrain = X[:split_idx, :, :]
+                Xtest = X[split_idx:, :, :]
+            else:
+                Xtrain = X[:split_idx, :]
+                Xtest = X[split_idx:, :]
+
+            ytrain = y[:split_idx]
+            ytest = y[split_idx:]
+            return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
     def arrays_to_matrix(self, X, wind_dim):
         """
@@ -746,38 +809,6 @@ class DatasetPartitioner:
         """
         X_new = X.reshape(X.shape[0], int(X.shape[1] / wind_dim), wind_dim)
         return X_new
-
-    def random_split(self, df):
-        """
-        Randomly split the dataset into training and test sets.
-
-        --- Step 4.1: Random partitioning.
-
-        Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
-        - df (DataFrame): The input dataframe.
-
-        Returns:
-        - Xtrain (ndarray): The training data.
-        - Xtest (ndarray): The test data.
-        - ytrain (Series): The training labels.
-        - ytest (Series): The test labels.
-        """
-        df = self.preprocess_random(df)
-        y = df['predict_val']   # y represents the prediction value
-        df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
-        X = df.values   # X represents the smart features
-        print('\n----------Number of columns', df.shape[1])
-
-        if self.windowing == 1:
-            if self.overlap == 1:  # If the overlap option is chosed as complete overlap
-                X = self.arrays_to_matrix(X, self.window_dim)   # FIXME: The final problem is window_dim.
-            else:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
-                data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
-                X = self.arrays_to_matrix(X, data_dim)   # FIXME: The final problem is window_dim.
-
-        Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
-        return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
     def preprocess_random(self, df):
         """
@@ -834,6 +865,9 @@ class DatasetPartitioner:
 
         # Drop missing value columns - dropped the rows based on missing values
         df.dropna(axis='columns', inplace=True)
+
+        # Drop model, capacity_bytes columns to match exact shape when creating matrix
+        df.drop(columns=['model', 'capacity_bytes'], inplace=True)
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
 
@@ -898,7 +932,7 @@ class DatasetPartitioner:
         - ytrain (Series): The balanced training labels.
         - ytest (Series): The test labels.
         """
-        resampler = RandomUnderSampler(1 / self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(1 / self.resampler_balancing, random_state=42)
+        resampler = RandomUnderSampler(sampling_strategy=1 / self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=1 / self.resampler_balancing, random_state=42)
 
         if self.oversample_undersample != 2:
             Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler) if self.windowing else resampler.fit_resample(Xtrain, ytrain)
@@ -930,58 +964,6 @@ class DatasetPartitioner:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
         ytest = ytest.astype(int)
         return Xtrain, ytrain
-
-    def hdd_split(self, df):
-        """
-        Split the dataset based on HDD failure.
-
-        --- Step 4.2: HDD partitioning.
-
-        Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
-        - df (DataFrame): The input dataframe.
-
-        Returns:
-        - Xtrain (ndarray): The training data.
-        - Xtest (ndarray): The test data.
-        - ytrain (Series): The training labels.
-        - ytest (Series): The test labels.
-        """
-
-        # Step 4.2.2: Apply Sampling Techniques.
-        np.random.seed(0)
-        df.set_index(['serial_number', 'date'], inplace=True)
-        df.sort_index(inplace=True)
-
-        failed, not_failed = self.get_failed_not_failed_drives(df)
-        test_failed, test_not_failed = self.get_test_drives(failed, not_failed)
-        test = test_failed + test_not_failed
-        train = self.get_train_drives(failed, not_failed, test)
-
-        df_train = df.loc[train, :].sort_index()
-        df_test = df.loc[test, :].sort_index()
-        df_train.reset_index(inplace=True)
-        df_test.reset_index(inplace=True)
-
-        ytrain = df_train.predict_val
-        ytest = df_test.predict_val
-
-        df_train.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
-        df_test.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
-
-        Xtrain = df_train.values
-        Xtest = df_test.values
-
-        if self.windowing == 1:
-            if self.overlap == 1:  # If the overlap option is chosed as complete overlap
-                Xtrain = self.arrays_to_matrix(Xtrain, self.window_dim)
-                Xtest = self.arrays_to_matrix(Xtest, self.window_dim)
-            else:  # If the overlap option chosed as dynamic overlap based on the factors of window_dim
-                data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
-                Xtrain = self.arrays_to_matrix(Xtrain, data_dim)
-                Xtest = self.arrays_to_matrix(Xtest, data_dim)
-
-        return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
     def get_failed_not_failed_drives(self, df):
         """
@@ -1038,43 +1020,6 @@ class DatasetPartitioner:
         train = failed + not_failed
         train = list(filter(lambda x: x not in test, train))
         return train
-
-    def date_split(self, df):
-        """
-        Split the dataset based on date.
-
-        --- Step 4.3: Other techniques.
-
-        Parameters:
-        - df (DataFrame): The input dataframe.
-
-        Returns:
-        - Xtrain (ndarray): The training data.
-        - Xtest (ndarray): The test data.
-        - ytrain (Series): The training labels.
-        - ytest (Series): The test labels.
-        """
-
-        # Step 4.2.3: Apply Sampling Techniques.
-        df.set_index('date', inplace=True)
-        df.sort_index(inplace=True)
-
-        y = df.predict_val
-        df.drop(columns=['serial_number', 'failure', 'predict_val'], inplace=True)
-        X = df.values
-
-        split_idx = int(X.shape[0] * (1 - self.test_train_perc))
-        if self.windowing == 1:
-            Xtrain = X[:split_idx, :, :]
-            Xtest = X[split_idx:, :, :]
-        else:
-            Xtrain = X[:split_idx, :]
-            Xtest = X[split_idx:, :]
-
-        ytrain = y[:split_idx]
-        ytest = y[split_idx:]
-
-        return self.balance_data(Xtrain, ytrain, Xtest, ytest)
 
     def __iter__(self):
         """
