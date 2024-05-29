@@ -6,7 +6,7 @@ import pandas as pd
 # import matplotlib.pyplot as plt
 import sys
 # import argparse
-from Networks_pytorch import *
+# from output.Networks_pytorch import *
 from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
@@ -14,7 +14,7 @@ if not sys.warnoptions:
 from sklearn.ensemble import RandomForestClassifier
 # from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
 from sklearn.utils import shuffle
-
+from Networks_pytorch import *
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -46,15 +46,60 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         report_metrics(Y_test_real, prediction, metric)
     elif classifier == 'TCN':
         # Step 1.7.2: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
-        net_train_validate_TCN(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
+        # net_train_validate_TCN(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
+        # Initialize the TCNTrainer with the appropriate parameters
+        tcn_trainer = TCNTrainer(
+            model=args['net'],                      # The TCN model
+            optimizer=args['optimizer'],            # Optimizer for the model
+            epochs=args['epochs'],                  # Total number of epochs
+            batch_size=args['batch_size'],          # Batch size for training
+            lr=args['lr']                           # Learning rate
+        )
+        # Run training and testing using the TCNTrainer
+        tcn_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'LSTM':
         # Step 1.7.3: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
-        train_dataset = FPLSTMDataset(X_train, Y_train)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
-        test_dataset = FPLSTMDataset(X_test, Y_test.values)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
-        net_train_validate_LSTM(args['net'], args['optimizer'], train_loader, test_loader, args['epochs'], X_test.shape[0], Xtrain.shape[0], args['lr'])
-        pass
+        # train_dataset = FPLSTMDataset(X_train, Y_train)
+        # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
+        # test_dataset = FPLSTMDataset(X_test, Y_test) # Changed passing parameters to Y_test, it is already converted to tensor
+        # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
+        # net_train_validate_LSTM(args['net'], args['optimizer'], train_loader, test_loader, args['epochs'], X_test.shape[0], Xtrain.shape[0], args['lr'])
+        lstm_trainer = LSTMTrainer(
+            model=args['net'],
+            optimizer=args['optimizer'],
+            epochs=args['epochs'],
+            batch_size=args['batch_size'],
+            lr=args['lr']
+        )
+        # Run training and testing using the TCNTrainer
+        lstm_trainer.run(X_train, Y_train, X_test, Y_test)
+
+def factors(n):
+    """
+    Returns a list of factors of the given number.
+
+    Parameters:
+    - n (int): The number to find the factors of.
+
+    Returns:
+    list: A list of factors of the given number.
+    """
+    factors = []
+    # Check for the smallest prime factor 2
+    while n % 2 == 0:
+        factors.append(2)
+        n //= 2
+    # Check for odd factors from 3 upwards
+    factor = 3
+    while factor * factor <= n:
+        while n % factor == 0:
+            factors.append(factor)
+            n //= factor
+        factor += 2
+    # If n became a prime number greater than 2
+    if n > 1:
+        factors.append(n)
+    return factors
 
 if __name__ == '__main__':
     # ------------------ #
@@ -119,7 +164,7 @@ if __name__ == '__main__':
     # TODO: Can be adjusted by dynamic parameters
     days_considered_as_failure = 7
     test_train_perc = 0.3
-    # type of oversampling
+    # type of oversampling: 0 means undersample, 1 means oversample, 2 means no balancing technique applied
     oversample_undersample = 2
     # balancing factor (major/minor = balancing_normal_failed)
     # TODO: We can calculate the imbalance ratio of the dataset and use this ratio to adjust the balancing factor.
@@ -133,7 +178,7 @@ if __name__ == '__main__':
     # if automatically select best features
     ranking = 'Ok'
     num_features = 18
-    overlap = 1
+    overlap = 2
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -198,7 +243,12 @@ if __name__ == '__main__':
         batch_size = 256
         lr = 0.001
         num_inputs = Xtrain.shape[1]
-        net, optimizer = init_net(lr, history_signal, num_inputs)
+        print('number of inputes:', num_inputs)
+        # Calculate the data dimension based on the history signal and overlap. 
+        # If overlap == 1, the overlap option is chosed as complete overlap. If overlap == 2, the overlap option is chosed as dynamic overlap based on the factors of window_dim
+        data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
+        print('data_dim:', data_dim)
+        net, optimizer = init_net(lr, data_dim, num_inputs)
         epochs = 200
     elif classifier == 'LSTM':
         # Step 1.6.3: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
@@ -228,26 +278,26 @@ if __name__ == '__main__':
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
-    try:
-        classification(
-            X_train=Xtrain,
-            Y_train=ytrain,
-            X_test=Xtest,
-            Y_test=ytest,
-            classifier=classifier,
-            metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
-            net=net,
-            optimizer=optimizer,
-            epochs=epochs,
-            batch_size=batch_size,
-            lr=lr
-        )
-    except:
-        classification(
-            X_train=Xtrain,
-            Y_train=ytrain,
-            X_test=Xtest,
-            Y_test=ytest,
-            classifier=classifier,
-            metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision']
-        )
+    #try:
+    classification(
+        X_train=Xtrain,
+        Y_train=ytrain,
+        X_test=Xtest,
+        Y_test=ytest,
+        classifier=classifier,
+        metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
+        net=net,
+        optimizer=optimizer,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr
+    )
+    #except:
+        # classification(
+        #     X_train=Xtrain,
+        #     Y_train=ytrain,
+        #     X_test=Xtest,
+        #     Y_test=ytest,
+        #     classifier=classifier,
+        #     metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision']
+        # )

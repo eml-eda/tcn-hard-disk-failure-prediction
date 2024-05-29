@@ -55,21 +55,6 @@ class FPLSTMDataset(torch.utils.data.Dataset):
         """
         return (self.x_tensors[idx], self.y_tensors[idx])
 
-def FPLSTM_collate(batch):
-    """
-    Collates a batch of data for FPLSTM model.
-
-    Args:
-        batch (list): A list of tuples containing input and target tensors.
-
-    Returns:
-        tuple: A tuple containing the collated input tensor and target tensor.
-    """
-    xx, yy = zip(*batch)
-    x_batch = torch.stack(xx).permute(1, 0, 2)
-    y_batch = torch.stack(yy)
-    return (x_batch, y_batch)
-
 # fault prediction LSTM: this network is used as a reference in the paper
 class FPLSTM(nn.Module):
 
@@ -124,6 +109,7 @@ class FPLSTM(nn.Module):
 
 ## this is the network used in the paper. It is a 1D conv with dilation
 class TCN_Network(nn.Module):
+    
     def __init__(self, history_signal, num_inputs):
         """
         Initializes the TCN_Network class.
@@ -293,291 +279,319 @@ def report_metrics(Y_test_real, prediction, metric):
             print(f'SCORE {m}: %.3f' % metrics[m]())
     return f1_score(Y_test_real, prediction)
 
-def train(ep, Xtrain, ytrain, batchsize, optimizer, model, Xtest, ytest):
-    """
-    Trains the model using the given training data and parameters.
-    Args:
-        ep (int): The current epoch number.
-        Xtrain (numpy.ndarray): The input training data.
-        ytrain (numpy.ndarray): The target training data.
-        batchsize (int): The batch size for training.
-        optimizer: The optimizer used for training.
-        model: The model to be trained.
-        Xtest (numpy.ndarray): The input test data.
-        ytest (numpy.ndarray): The target test data.
+class LSTMTrainer:
+    def __init__(self, model, optimizer, epochs, batch_size, Xtrain_examples, Xtest_examples, lr):
+        """
+        Initialize the LSTMModelTrainer with all necessary components.
 
-    Returns:
-        numpy.ndarray: The F1 scores calculated using the training data.
+        Args:
+            model (torch.nn.Module): The LSTM model to be trained and tested.
+            optimizer (torch.optim.Optimizer): Optimizer used for training the model.
+            epochs (int): Number of training epochs.
+            batch_size (int): Batch size for training.
+            Xtrain_examples (int): Number of training examples.
+            Xtest_examples (int): Number of testing examples.
+            lr (float): Learning rate for the optimizer.
+        """
+        self.model = model
+        self.optimizer = optimizer
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.Xtrain_examples = Xtrain_examples
+        self.Xtest_examples = Xtest_examples
+        self.lr = lr
 
-    """
-    train_loss = 0
-    # Randomize the order of the elements in the training set to ensure that the training process is not influenced by the order of the data
-    Xtrain, ytrain = shuffle(Xtrain, ytrain)
-    model.train()
-    samples, features, dim_window = Xtrain.shape
-    nbatches = Xtrain.shape[0] // batchsize
-    correct = 0
-    # we weights the different classes. We both use an unbalance management and the weighting of the classes
-    weights = [1.7, 0.3]
-    # we use the GPU to train
-    class_weights = torch.FloatTensor(weights).cuda()
-    # we use the CrossEntropyLoss as loss function
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-    predictions = np.ndarray(Xtrain.shape[0])
-    #criterion = torch.nn.CrossEntropyLoss()
-    
-    for batch_idx in np.arange(nbatches + 1):
-        data = Xtrain[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :, :]
-        target = ytrain[(batch_idx * batchsize):((batch_idx + 1) * batchsize)]
-        
-        if torch.cuda.is_available():
-            # Convert the data and target to tensors and move them to the GPU
-            data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
-        else:
-            # Convert the data and target to tensors
-            data, target = torch.Tensor(data), torch.Tensor(target)
+    def FPLSTM_collate(self, batch):
+        """
+        Collates a batch of data for FPLSTM model.
 
-        # Wrap the data and target in a Variable to allow automatic differentiation  
-        data, target = Variable(data), Variable(target)
-        # Zero the gradients since PyTorch accumulates gradients on subsequent backward passes
-        optimizer.zero_grad()
-        # Get the output predictions from the model
-        output = model(data)
-        # Calculate the loss between the predictions and the target
-        loss = criterion(output, target.long())
-        # Perform backpropagation to calculate the gradients of the loss with respect to the model parameters
-        loss.backward()
-        # Update the model parameters using the gradients and the optimizer
-        optimizer.step()
-        pred = output.data.max(1, keepdim=True)[1]
-        predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
-        correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-        train_loss += loss
-        
-        if batch_idx > 0 and batch_idx % 10 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {} \r'.format(
-                ep, batch_idx * batchsize, samples, (100. * batch_idx * batchsize) / samples,
-                train_loss.item() / (10 * batchsize), correct / ((batch_idx + 1) * batchsize)), end="\r")
-            train_loss = 0
-    
-    print('Training completed')
-    F1 = report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
-    # at each epoch, we test the network to print the accuracy
-    test(Xtest, ytest, model)
-    #test(Xtrain,ytrain, model)
-    return F1
-    
+        Args:
+            batch (list): A list of tuples containing input and target tensors.
 
-def test(Xtest, ytest, model):
-    """
-    Evaluate the model on the test dataset and calculate various metrics.
+        Returns:
+            tuple: A tuple containing the collated input tensor and target tensor.
+        """
+        xx, yy = zip(*batch)
+        x_batch = torch.stack(xx).permute(1, 0, 2)
+        y_batch = torch.stack(yy)
+        return (x_batch, y_batch)
 
-    Args:
-        Xtest (numpy.ndarray): Input test data.
-        ytest (numpy.ndarray): Target test data.
-        model: The trained model to be evaluated.
+    def train(self, Xtrain, ytrain, epoch):
+        """
+        Trains the LSTM model using the given training data.
 
-    Returns:
-        numpy.ndarray: Predictions made by the model.
+        Args:
+            epoch (int): The current epoch number.
 
-    """
-    model.eval()  # Set the model to evaluation mode
-    test_loss = 0  # Initialize the total test loss to 0
-    correct = 0  # Initialize the number of correct predictions to 0
-    batchsize = 30000  # Define the number of samples in each batch
-    nbatches = Xtest.shape[0] // batchsize  # Calculate the number of batches
-    predictions = np.ndarray(Xtest.shape[0])  # Initialize an array to store the model's predictions
-    criterion = torch.nn.CrossEntropyLoss()  # Define the loss function
+        Returns:
+            dict: A dictionary containing the F1 scores for different metrics.
+        """
+        train_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
+        train_loss = 0  # Initialize the total training loss to 0
+        self.model.train()  # Set the model to training mode
+        correct = 0  # Initialize the number of correct predictions to 0
+        weights = [1.9, 0.1]  # Define class weights for the loss function
+        class_weights = torch.FloatTensor(weights).cuda()  # Convert class weights to a CUDA tensor
+        predictions = np.ndarray(Xtrain.shape[0])  # Store the model's predictions
+        ytrain = np.ndarray(Xtrain.shape[0])  # Store the true labels
+        #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        criterion = torch.nn.CrossEntropyLoss()
 
-    # Disable gradient calculations (since we are in test mode)
-    with torch.no_grad():
-        for batch_idx in np.arange(nbatches + 1):
-            # Extract the data and target for this batch
-            data, target = Variable(torch.Tensor(Xtest[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :, :]),
-                                   volatile=True), Variable(torch.Tensor(ytest[(batch_idx * batchsize):((batch_idx + 1) * batchsize)]))
-            # If CUDA is available, move the data and target to the GPU
-            if torch.cuda.is_available():
-                data, target = data.cuda(), target.cuda()
-            # Forward pass: compute predicted outputs by passing inputs to the model
-            output = model(data)
-            # Calculate the batch loss
-            test_loss = criterion(output, target.long()).item()
-            # Get the predicted class from the maximum class score
-            pred = output.data.max(1, keepdim=True)[1]
-            # Compare predictions to true label
-            correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-            # Store the predictions for this batch
-            predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
-
-    # Calculate the average loss over all of the batches
-    test_loss /= Xtest.shape[0]
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, Xtest.shape[0], 100. * correct / Xtest.shape[0]))
-    report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
-    return predictions
-
-def net_train_validate_TCN(net, optimizer, Xtrain, ytrain, Xtest, ytest, epochs, batch_size, lr):
-    """
-    Train and validate a neural network model using TCN architecture.
-    --- Step 1.7.2: Perform Classification using TCN. Subflowchart: TCN Subflowchart.
-    Args:
-        net (torch.nn.Module): The neural network model.
-        optimizer (torch.optim.Optimizer): The optimizer used for training.
-        Xtrain (numpy.ndarray): The training input data.
-        ytrain (numpy.ndarray): The training target data.
-        Xtest (numpy.ndarray): The validation input data.
-        ytest (numpy.ndarray): The validation target data.
-        epochs (int): The number of epochs to train the model.
-        batch_size (int): The batch size used for training.
-        lr (float): The learning rate for the optimizer.
-
-    Returns:
-        None
-    """
-    ytest = ytest.values
-    # Use a deque to store the last 5 F1 scores to check for convergence
-    F1_list = deque(maxlen=5)
-
-    for epoch in range(1, epochs):
-        # the train include also the test inside
-        F1 = train(epoch, Xtrain, ytrain, batch_size, optimizer, net, Xtest, ytest)
-        F1_list.append(F1)
-
-        if len(F1_list) == 5 and len(set(F1_list)) == 1:
-            print("Exited because last 5 epochs has constant F1")
-            break
-
-        if epoch % 20 == 0:
-            lr /= 10
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
-    print('Training completed')
-
-
-def train_LSTM(ep, train_loader, optimizer, model, Xtrain_examples):
-    """
-    Trains the LSTM model using the given training data.
-
-    Args:
-        ep (int): The current epoch number.
-        train_loader (torch.utils.data.DataLoader): The data loader for the training data.
-        optimizer (torch.optim.Optimizer): The optimizer used for training.
-        model (torch.nn.Module): The LSTM model.
-        Xtrain_examples (int): The total number of training examples.
-
-    Returns:
-        dict: A dictionary containing the F1 scores for different metrics.
-    """
-    train_loss = 0  # Initialize the total training loss to 0
-    model.train()  # Set the model to training mode
-    correct = 0  # Initialize the number of correct predictions to 0
-    weights = [1.9, 0.1]  # Define class weights for the loss function
-    class_weights = torch.FloatTensor(weights).cuda()  # Convert class weights to a CUDA tensor
-    predictions = np.ndarray(Xtrain_examples)  # Store the model's predictions
-    ytrain = np.ndarray(Xtrain_examples)  # Store the true labels
-    #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-    criterion = torch.nn.CrossEntropyLoss()
-
-    for i, data in enumerate(train_loader):
-        sequences, labels = data  # Input sequences and their corresponding labels
-        batchsize = sequences.shape[1]  # Number of sequences in each batch
-        sequences = sequences.cuda()  # Move sequences to GPU
-        labels = labels.cuda()  # Move labels to GPU
-        optimizer.zero_grad()  # Reset gradients from previous iteration
-        output = model(sequences)  # Forward pass through the model
-        l = criterion(output, labels)  # Calculate loss between model output and true labels
-        l.backward()  # Backward pass to calculate gradients
-        optimizer.step()  # Update model parameters
-        pred = output.data.max(1, keepdim=True)[1]  # Get the predicted labels
-        # Store the predicted labels for this batch in the predictions array
-        predictions[(i * batchsize):((i + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
-        # Store the true labels for this batch in the ytrain array
-        ytrain[(i * batchsize):((i + 1) * batchsize)] = labels.cpu().numpy()
-        # Calculate the number of correct predictions
-        correct += pred.eq(labels.data.view_as(pred)).cpu().sum()
-        train_loss += l.item()  # Add the loss for this batch to the total training loss
-        if i > 0 and i % 10 == 0:  # Every 10 iterations, print the average loss and accuracy for the last 10 batches
-            print(f'Train Epoch: {ep} [{i * batchsize}/{Xtrain_examples} ({(100. * i * batchsize) / Xtrain_examples:.0f}%)] Loss: {train_loss / (10 * batchsize):.6f} Accuracy: {float(correct) / ((i + 1) * batchsize):.4f}', end="\r")
-            # train_loss = 0 # FIXME: We do not need to set the loss to 0 here
-
-    avg_train_loss = train_loss / len(train_loader.dataset)
-    avg_train_acc = correct / len(train_loader.dataset)
-    print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {:.6f}'.format(ep, avg_train_loss, avg_train_acc))
-
-    ytrain = ytrain[:((i + 1) * batchsize)]
-    predictions = predictions[:((i + 1) * batchsize)]
-    F1 = report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
-    return F1
-
-def test_LSTM(model, test_loader, Xtest_examples):
-    """
-    Test the LSTM model on the test dataset.
-
-    Args:
-        model (torch.nn.Module): The LSTM model to be tested.
-        test_loader (torch.utils.data.DataLoader): The data loader for the test dataset.
-        Xtest_examples (int): The number of examples in the test dataset.
-
-    Returns:
-        None
-
-    """
-    model.eval()
-    test_loss = 0
-    correct = 0
-    criterion = torch.nn.CrossEntropyLoss()
-    with torch.no_grad():
-        test_preds = torch.as_tensor([])
-        test_labels = torch.as_tensor([], dtype=torch.long)
-        for i, test_data in enumerate(test_loader):
-            sequences, labels = test_data
-            sequences = sequences.cuda()
-            labels = labels.cuda()
-            preds = model(sequences)
-            pred = preds.data.max(1, keepdim=True)[1]
-            l = criterion(preds, labels)
-            test_loss += l.item()
+        for i, data in enumerate(train_loader):
+            sequences, labels = data  # Input sequences and their corresponding labels
+            batchsize = sequences.shape[1]  # Number of sequences in each batch
+            sequences = sequences.cuda()  # Move sequences to GPU
+            labels = labels.cuda()  # Move labels to GPU
+            self.optimizer.zero_grad()  # Reset gradients from previous iteration
+            output = self.model(sequences)  # Forward pass through the model
+            loss = criterion(output, labels)  # Calculate loss between model output and true labels
+            loss.backward()  # Backward pass to calculate gradients
+            self.optimizer.step()  # Update model parameters
+            pred = output.data.max(1, keepdim=True)[1]  # Get the predicted labels
+            # Store the predicted labels for this batch in the predictions array
+            predictions[(i * batchsize):((i + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
+            # Store the true labels for this batch in the ytrain array
+            ytrain[(i * batchsize):((i + 1) * batchsize)] = labels.cpu().numpy()
+            # Calculate the number of correct predictions
             correct += pred.eq(labels.data.view_as(pred)).cpu().sum()
-            test_preds = torch.cat((test_preds, preds.cpu()))
-            test_labels = torch.cat((test_labels, labels.cpu()))
-            _, pred_labels = torch.max(test_preds, 1)
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-                test_loss, correct, Xtest_examples,
-                100. * correct / Xtest_examples))
-    report_metrics(test_labels, pred_labels, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+            train_loss += loss.item()  # Add the loss for this batch to the total training loss
+            if i > 0 and i % 10 == 0:  # Every 10 iterations, print the average loss and accuracy for the last 10 batches
+                print(f'Train Epoch: {epoch} [{i * batchsize}/{Xtrain.shape[0]} ({(100. * i * batchsize) / self.Xtrain_examples:.0f}%)] Loss: {train_loss / (10 * batchsize):.6f} Accuracy: {float(correct) / ((i + 1) * batchsize):.4f}', end="\r")
+                train_loss = 0
 
-def net_train_validate_LSTM(net, optimizer, train_loader, test_loader, epochs, Xtest_examples, Xtrain_examples, lr):
-    """
-    Train and validate the LSTM network.
+        avg_train_loss = train_loss / len(train_loader.dataset)
+        avg_train_acc = correct / len(train_loader.dataset)
+        print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {:.6f}'.format(epoch, avg_train_loss, avg_train_acc))
 
-    Args:
-        net (torch.nn.Module): The LSTM network model.
-        optimizer (torch.optim.Optimizer): The optimizer used for training the network.
-        train_loader (torch.utils.data.DataLoader): The data loader for the training dataset.
-        test_loader (torch.utils.data.DataLoader): The data loader for the testing dataset.
-        epochs (int): The number of epochs to train the network.
-        Xtest_examples (list): List of examples from the testing dataset.
-        Xtrain_examples (list): List of examples from the training dataset.
-        lr (float): The learning rate for the optimizer.
+        ytrain = ytrain[:((i + 1) * batchsize)]
+        predictions = predictions[:((i + 1) * batchsize)]
+        F1 = report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        return F1
 
-    Returns:
-        None
-    """
-    # Training Loop
-    F1_list = np.ndarray(5)
-    i = 0
-    # identical to net_train_validate but train and test are separated and train does not include test
-    for epoch in range(1, epochs):
-        F1 = train_LSTM(epoch, train_loader, optimizer, net, Xtrain_examples)
-        test_LSTM(net, test_loader, Xtest_examples)
-        F1_list[i] = F1
-        i += 1
-        if i == 5:
-            i = 0
-        if F1_list[0] != 0 and (max(F1_list) - min(F1_list)) == 0:
-            print("Exited because last 5 epochs has constant F1")
-        if epoch % 20 == 0:
-            lr /= 10
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
-    print('T')
+    def test(self, Xtest, ytest):
+        """
+        Test the LSTM model on the test dataset.
+
+        Args:
+
+        Returns:
+            None
+
+        """
+        test_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
+        self.model.eval()
+        test_loss = 0
+        correct = 0
+        criterion = torch.nn.CrossEntropyLoss()
+        with torch.no_grad():
+            test_preds = torch.as_tensor([])
+            test_labels = torch.as_tensor([], dtype=torch.long)
+            for test_data in enumerate(test_loader):
+                sequences, labels = test_data
+                sequences = sequences.cuda()
+                labels = labels.cuda()
+                preds = self.model(sequences)
+                pred = preds.data.max(1, keepdim=True)[1]
+                loss = criterion(preds, labels)
+                test_loss += loss.item()
+                correct += pred.eq(labels.data.view_as(pred)).cpu().sum()
+                test_preds = torch.cat((test_preds, preds.cpu()))
+                test_labels = torch.cat((test_labels, labels.cpu()))
+                _, pred_labels = torch.max(test_preds, 1)
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+                    test_loss, correct, Xtest.shape[0],
+                    100. * correct / Xtest.shape[0]))
+        report_metrics(test_labels, pred_labels, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+
+    def run(self, Xtrain, ytrain, Xtest, ytest):
+        """
+        Train and validate the LSTM network.
+
+        Args:
+            Xtrain (np.ndarray): The training input data.
+            ytrain (np.ndarray): The training target data.
+            Xtest (np.ndarray): The testing input data.
+            ytest (np.ndarray): The testing target data.
+
+        Returns:
+            None
+        """
+        
+        # Training Loop
+        F1_list = np.ndarray(5)
+        i = 0
+        # identical to net_train_validate but train and test are separated and train does not include test
+        for epoch in range(1, self.epochs):
+            F1 = self.train(Xtrain, ytrain, epoch)
+            self.test(Xtest, ytest)
+            F1_list[i] = F1
+            i += 1
+            if i == 5:
+                i = 0
+            if F1_list[0] != 0 and (max(F1_list) - min(F1_list)) == 0:
+                print("Exited because last 5 epochs has constant F1")
+            if epoch % 20 == 0:
+                lr /= 10
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = lr
+        print('Training completed')
+
+class TCNTrainer:
+    def __init__(self, model, optimizer, epochs, batch_size, lr):
+        """
+        Initialize the TCNTrainer with all necessary components for training and testing.
+
+        Args:
+            model (torch.nn.Module): The TCN model.
+            optimizer (torch.optim.Optimizer): Optimizer used for model training.
+            epochs (int): Number of training epochs.
+            batch_size (int): Batch size for training.
+            lr (float): Initial learning rate.
+        """
+        self.model = model
+        self.optimizer = optimizer
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.lr = lr
+
+    def train(self, Xtrain, ytrain, epoch):
+        """
+        Trains the TCN model using the given training data and parameters.
+
+        Args:
+            ep (int): The current epoch number.
+            Xtrain (numpy.ndarray): The input training data.
+            ytrain (numpy.ndarray): The target training data.
+
+        Returns:
+            numpy.ndarray: The F1 scores calculated using the training data.
+
+        """
+        train_loss = 0
+        # Randomize the order of the elements in the training set to ensure that the training process is not influenced by the order of the data
+        Xtrain, ytrain = shuffle(Xtrain, ytrain)
+        self.model.train()
+        samples, features, dim_window = Xtrain.shape
+        nbatches = Xtrain.shape[0] // self.batch_size
+        correct = 0
+        # we weights the different classes. We both use an unbalance management and the weighting of the classes
+        weights = [1.7, 0.3]
+        # we use the GPU to train
+        class_weights = torch.FloatTensor(weights).cuda()
+        # we use the CrossEntropyLoss as loss function
+        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        predictions = np.ndarray(Xtrain.shape[0])
+        
+        for batch_idx in np.arange(nbatches + 1):
+            data = Xtrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]
+            target = ytrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
+            
+            if torch.cuda.is_available():
+                # Convert the data and target to tensors and move them to the GPU
+                data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
+            else:
+                # Convert the data and target to tensors
+                data, target = torch.Tensor(data), torch.Tensor(target)
+
+            # Wrap the data and target in a Variable to allow automatic differentiation  
+            data, target = Variable(data), Variable(target)
+            # Zero the gradients since PyTorch accumulates gradients on subsequent backward passes
+            self.optimizer.zero_grad()
+            # Get the output predictions from the model
+            output = self.model(data)
+            # Calculate the loss between the predictions and the target
+            loss = criterion(output, target.long())
+            # Perform backpropagation to calculate the gradients of the loss with respect to the model parameters
+            loss.backward()
+            # Update the model parameters using the gradients and the optimizer
+            self.optimizer.step()
+            pred = output.data.max(1, keepdim=True)[1]
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
+            correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+            train_loss += loss
+            
+            if batch_idx > 0 and batch_idx % 10 == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {} \r'.format(
+                    epoch, batch_idx * self.batch_size, samples, (100. * batch_idx * self.batch_size) / samples,
+                    train_loss.item() / (10 * self.batch_size), correct / ((batch_idx + 1) * self.batch_size)), end="\r")
+                train_loss = 0
+        
+        print('Training completed')
+        F1 = report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        return F1
+
+    def test(self, Xtest, ytest):
+        """
+        Test the TCN model on the test dataset.
+
+        Args:
+            Xtest (np.ndarray): Input test data.
+            ytest (np.ndarray): Target test data.
+
+        Returns:
+            np.ndarray: Predictions for the test set.
+        """
+        self.model.eval()  # Set the model to evaluation mode
+        test_loss = 0  # Initialize the total test loss to 0
+        correct = 0  # Initialize the number of correct predictions to 0
+        batchsize = 30000  # Define the number of samples in each batch
+        nbatches = Xtest.shape[0] // batchsize  # Calculate the number of batches
+        predictions = np.ndarray(Xtest.shape[0])  # Initialize an array to store the model's predictions
+        criterion = torch.nn.CrossEntropyLoss()  # Define the loss function
+
+        # Disable gradient calculations (since we are in test mode)
+        with torch.no_grad():
+            for batch_idx in np.arange(nbatches + 1):
+                # Extract the data and target for this batch
+                data, target = Variable(torch.Tensor(Xtest[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :, :]),
+                                    volatile=True), Variable(torch.Tensor(ytest[(batch_idx * batchsize):((batch_idx + 1) * batchsize)]))
+                # If CUDA is available, move the data and target to the GPU
+                if torch.cuda.is_available():
+                    data, target = data.cuda(), target.cuda()
+                # Forward pass: compute predicted outputs by passing inputs to the model
+                output = self.model(data)
+                # Calculate the batch loss
+                test_loss = criterion(output, target.long()).item()
+                # Get the predicted class from the maximum class score
+                pred = output.data.max(1, keepdim=True)[1]
+                # Compare predictions to true label
+                correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+                # Store the predictions for this batch
+                predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
+
+        # Calculate the average loss over all of the batches
+        test_loss /= Xtest.shape[0]
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            test_loss, correct, Xtest.shape[0], 100. * correct / Xtest.shape[0]))
+        report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        return predictions
+
+    def run(self, Xtrain, ytrain, Xtest, ytest):
+        """
+        Run the training and testing process for the model.
+
+        Args:
+            Xtrain (np.ndarray): The training input data.
+            ytrain (np.ndarray): The training target data.
+            Xtest (np.ndarray): The testing input data.
+            ytest (np.ndarray): The testing target data.
+        """
+        # Use a deque to store the last 5 F1 scores to check for convergence
+        F1_list = deque(maxlen=5)
+
+        for epoch in range(1, self.epochs):
+            # the train include also the test inside
+            F1 = self.train(Xtrain, ytrain, epoch)
+            # At each epoch, we test the network to print the accuracy
+            self.test(Xtest, ytest)
+            F1_list.append(F1)
+
+            if len(F1_list) == 5 and len(set(F1_list)) == 1:
+                print("Exited because last 5 epochs has constant F1")
+                break
+
+            if epoch % 20 == 0:
+                lr /= 10
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = lr
+        print('Training completed')

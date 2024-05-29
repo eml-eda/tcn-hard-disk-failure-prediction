@@ -670,7 +670,7 @@ class DatasetPartitioner:
             total_shifts = 0
             previous_down_factor = 1
             serials = self.df['serial_number']
-            df_failed = df[df['predict_val']==1]
+            df_failed = self.df[self.df['predict_val']==1]
             windowed_df_failed = df_failed
             for i in np.arange(self.window_dim - 1):
                 print(f'Concatenating time - {i} \r', end="\r")
@@ -723,19 +723,26 @@ class DatasetPartitioner:
         """
         if self.technique == 'random':
             df = self.preprocess_random(df)
-            y = df['predict_val']   # y represents the prediction value
+            y = df['predict_val']   # y represents the prediction value (Series)
             df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
-            X = df.values   # X represents the smart features
+            X = df.values   # X represents the smart features (ndarray)
             print('\n----------Number of columns', df.shape[1])
 
             if self.windowing == 1:
-                if self.overlap == 1:  # If the overlap option is chosed as complete overlap
-                    X = self.arrays_to_matrix(X, self.window_dim)   # FIXME: The final problem is window_dim.
+                # Currently we can only choose overlap == 1 since other options will cause the windows dimension to change, inconsistent with the dim of the network
+                if self.overlap == 1:  # If the overlap option is chosen as complete overlap
+                    X = self.arrays_to_matrix(X, self.window_dim)
                 else:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
                     data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
-                    X = self.arrays_to_matrix(X, data_dim)   # FIXME: The final problem is window_dim.
+                    X = self.arrays_to_matrix(X, data_dim)
             print('Augmented data of predict_val is: ', Counter(y))
+            # Print the shapes of the train and test sets
+            # Xtrain: ndarray, Xtest: ndarray, ytrain: Series, ytest: Series
             Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
+            # print('Xtrain shape:', np.shape(Xtrain))
+            # print('Xtest shape:', np.shape(Xtest))
+            # print('ytrain shape:', np.shape(ytrain))
+            # print('ytest shape:', np.shape(ytest))
             return self.balance_data(Xtrain, ytrain, Xtest, ytest) 
         
         elif self.technique == 'hdd':
@@ -764,6 +771,7 @@ class DatasetPartitioner:
             Xtest = df_test.values
 
             if self.windowing == 1:
+                # Currently we can only choose overlap == 1 since other options will cause the windows dimension to change, inconsistent with the dim of the network
                 if self.overlap == 1:  # If the overlap option is chosed as complete overlap
                     Xtrain = self.arrays_to_matrix(Xtrain, self.window_dim)
                     Xtest = self.arrays_to_matrix(Xtest, self.window_dim)
@@ -825,8 +833,7 @@ class DatasetPartitioner:
         """
         if self.windowing != 1:
             return df
-        
-        # df['predict_val'] = df[f'predict_val_{self.window_dim - 1}']    # BUG: If we did not downsample, there will be no duplicate columns. 
+         
         # Replace the 'predict_val' column with a new column 'predict_val' that contains the maximum value of the 'predict_val' columns
         # Fixed RegEx problem
         predict_val_cols = [col for col in df.columns if re.match(r'^predict_val_\d+$', col)]
@@ -871,26 +878,8 @@ class DatasetPartitioner:
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
 
-        print('Dropping invalid windows ')
-        # Define the keyword as a variable, which could be 'raw' or 'normalized'
-        keyword = 'raw'
-        
-        # self.windowing == 1 means that the input array will be divided into multiple windows which stores the same column, so we do not need to drop multiple columns
-        # self.windowing != 1 means that the input array will not be divided into multiple windows, so we need to drop multiple columns
-        if self.windowing != 1:
-            # Pattern to find columns that match 'smart_{attributes_digit}_raw' followed by an additional suffix (such as smart_1_raw_1)
-            pattern_to_drop = rf'^smart_\d+_{keyword}_\d+$'
-
-            # Identify columns to drop
-            columns_to_drop = [col for col in df.columns if re.match(pattern_to_drop, col)]
-
-            # Drop these columns from the DataFrame
-            df.drop(columns=columns_to_drop, inplace=True)
-
+        print('Dropping invalid windows ')   
         print(df.columns)
-
-        # indexes = self.get_invalid_indexes(df)
-        # df.drop(indexes, inplace=True) # BUG:
         df.reset_index(inplace=True)
         
         return df
@@ -929,17 +918,18 @@ class DatasetPartitioner:
         Returns:
         - Xtrain (ndarray): The balanced training data.
         - Xtest (ndarray): The test data.
-        - ytrain (Series): The balanced training labels.
-        - ytest (Series): The test labels.
+        - ytrain (ndarray): The balanced training labels.
+        - ytest (ndarray): The test labels.
         """
-        resampler = RandomUnderSampler(sampling_strategy=1 / self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=1 / self.resampler_balancing, random_state=42)
 
         if self.oversample_undersample != 2:
+            resampler = RandomUnderSampler(sampling_strategy=1 / self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=1 / self.resampler_balancing, random_state=42)
             Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler) if self.windowing else resampler.fit_resample(Xtrain, ytrain)
         else:
             ytrain = ytrain.astype(int)
             ytest = ytest.astype(int)
-            ytrain = ytrain.values
+        ytrain = ytrain.values
+        ytest = ytest.values
 
         return Xtrain, Xtest, ytrain, ytest
 
@@ -962,7 +952,7 @@ class DatasetPartitioner:
         ytrain = ytrain.astype(int)
         Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
         Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
-        ytest = ytest.astype(int)
+        #ytest = ytest.astype(int)
         return Xtrain, ytrain
 
     def get_failed_not_failed_drives(self, df):
