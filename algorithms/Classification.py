@@ -246,13 +246,20 @@ if __name__ == '__main__':
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
         batch_size = 256
         lr = 0.001
+        epochs = 200
         num_inputs = Xtrain.shape[1]
         # Calculate the data dimension based on the history signal and overlap. 
         # If overlap == 1, the overlap option is chosed as complete overlap. If overlap == 2, the overlap option is chosed as dynamic overlap based on the factors of window_dim
         data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
         print(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
-        net, optimizer = init_net(lr, data_dim, num_inputs)
-        epochs = 200
+        net = TCN_Network(data_dim, num_inputs)
+        if torch.cuda.is_available():
+            print('Moving model to cuda')
+            net.cuda()
+        else:
+            print('Model to cpu')
+        # We use the Adam optimizer, a method for Stochastic Optimization
+        optimizer = getattr(optim, 'Adam')(net.parameters(), lr=lr)
     elif classifier == 'LSTM':
         # Step 1.6.3: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
         lr = 0.001
@@ -266,7 +273,11 @@ if __name__ == '__main__':
         fc1_hidden_s = 16
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
-        net.cuda()
+        if torch.cuda.is_available():
+            print('Moving model to cuda')
+            net.cuda()
+        else:
+            print('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
         optimizer = optim.Adam(net.parameters(), lr=lr)
     ## ---------------------------- ##

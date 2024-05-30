@@ -222,29 +222,6 @@ class TCN_Network(nn.Module):
 
         return x
 
-## called inside Classification
-def init_net(lr, history_signal, num_inputs):
-    """
-    Initializes the neural network model and optimizer.
-
-    Args:
-        lr (float): The learning rate for the optimizer.
-        history_signal (int): The number of historical signals used as input to the model.
-        num_inputs (int): The number of input features.
-
-    Returns:
-        tuple: A tuple containing the initialized neural network model and optimizer.
-    """
-    net = TCN_Network(history_signal, num_inputs)
-    # Return a new optimizer object for the given model parameters
-    optimizer = getattr(optim, 'Adam')(net.parameters(), lr=lr)
-    if torch.cuda.is_available():
-        print('Moving model to cuda')
-        net.cuda()
-    else:
-        print('Model to cpu')
-    return net, optimizer
-
 def report_metrics(Y_test_real, prediction, metric):
     """
     Calculate and print various evaluation metrics based on the predicted and actual values.
@@ -321,6 +298,8 @@ class LSTMTrainer:
         Trains the LSTM model using the given training data.
 
         Args:
+            Xtrain (np.ndarray): The training input data.
+            ytrain (np.ndarray): The training target data.
             epoch (int): The current epoch number.
 
         Returns:
@@ -389,6 +368,8 @@ class LSTMTrainer:
         Test the LSTM model on the test dataset.
 
         Args:
+            Xtest (np.ndarray): The input test data.
+            ytest (np.ndarray): The target test data.
 
         Returns:
             None
