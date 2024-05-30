@@ -410,7 +410,7 @@ def interpolate_ts(df, method='linear'):
     :return: Dataframe with interpolated values.
     """
 
-    interp_df = pd.DataFrame()
+    interp_dfs = []
 
     for serial_num, inner_df in df.groupby(level=0):
         inner_df = inner_df.droplevel(level=0).asfreq('D') 
@@ -418,10 +418,12 @@ def interpolate_ts(df, method='linear'):
         inner_df['serial_number'] = serial_num
         inner_df = inner_df.reset_index()
 
-        interp_df = pd.concat([interp_df, inner_df], axis=0)
+        print(f'Added {len(inner_df)} items for serial number: {serial_num}\r', end='\r')
+        interp_dfs.append(inner_df)
 
+    interp_df = pd.concat(interp_dfs, axis=0)
     df = interp_df.set_index(['serial_number', 'date']).sort_index()
-    
+
     return df
 
 def generate_failure_predictions(df, days, window):
@@ -544,7 +546,7 @@ class DatasetPartitioner:
 
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
+            None
 
         Returns:
         - Xtrain (ndarray): The training data.
@@ -574,7 +576,6 @@ class DatasetPartitioner:
         Returns a list of factors of the given number.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - n (int): The number to find the factors of.
 
         Returns:
@@ -625,8 +626,8 @@ class DatasetPartitioner:
 
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
-
+            None
+        
         Returns:
         - DataFrame: The windowed dataset.
         """
@@ -650,7 +651,6 @@ class DatasetPartitioner:
         Rename the columns of the dataframe to avoid duplicates.
         --- Step 3: Prepare data for modeling.
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -675,7 +675,7 @@ class DatasetPartitioner:
         We have the serial_number and date columns in the dataset here.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
+            None
 
         Returns:
         - DataFrame: The windowed dataframe.
@@ -759,7 +759,6 @@ class DatasetPartitioner:
         --- Step 4: Technique selection.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -786,10 +785,8 @@ class DatasetPartitioner:
             return self.balance_data(Xtrain, ytrain, Xtest, ytest) 
         
         elif self.technique == 'hdd':
-            # Step 4.2.2: Apply Sampling Techniques.
+            # Step 4.2.2: Apply Sampling Techniques for HDD-based partitioning.
             np.random.seed(0)
-            #df.set_index(['serial_number', 'date'], inplace=True)  # BUG:
-            #df.sort_index(inplace=True)
 
             failed, not_failed = self.get_failed_not_failed_drives(df)
             test_failed, test_not_failed = self.get_test_drives(failed, not_failed)
@@ -798,8 +795,6 @@ class DatasetPartitioner:
 
             df_train = df.loc[train, :].sort_index()
             df_test = df.loc[test, :].sort_index()
-            #df_train.reset_index(inplace=True)  # BUG:
-            #df_test.reset_index(inplace=True)
 
             ytrain = df_train.predict_val
             ytest = df_test.predict_val
@@ -862,7 +857,6 @@ class DatasetPartitioner:
         --- Step 4.1.1: Apply sampling technique.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -926,7 +920,6 @@ class DatasetPartitioner:
     #     Get the indexes of invalid windows in the dataframe.
 
     #     Parameters:
-    #     - self (DatasetPartitioner): The DatasetPartitioner object.
     #     - df (DataFrame): The input dataframe.
 
     #     Returns:
@@ -946,7 +939,6 @@ class DatasetPartitioner:
         --- Step 5: Final Dataset Creation
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - Xtrain (ndarray): The training data.
         - ytrain (Series): The training labels.
         - Xtest (ndarray): The test data.
@@ -996,7 +988,6 @@ class DatasetPartitioner:
         Get the lists of failed and not failed drives.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - df (DataFrame): The input dataframe.
 
         Returns:
@@ -1024,7 +1015,6 @@ class DatasetPartitioner:
         Get the test drives from the lists of failed and not failed drives.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - failed (list): The list of failed drives.
         - not_failed (list): The list of not failed drives.
 
@@ -1044,7 +1034,6 @@ class DatasetPartitioner:
         Get the training drives from the lists of failed and not failed drives.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
         - failed (list): The list of failed drives.
         - not_failed (list): The list of not failed drives.
         - test (list): The list of test drives.
@@ -1064,7 +1053,7 @@ class DatasetPartitioner:
         --- Step 6: Return the training and test datasets.
 
         Parameters:
-        - self (DatasetPartitioner): The DatasetPartitioner object.
+            None
         """
         return iter((self.Xtrain, self.Xtest, self.ytrain, self.ytest))
 

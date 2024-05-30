@@ -163,7 +163,7 @@ if __name__ == '__main__':
     # type of oversampling: 0 means undersample, 1 means oversample, 2 means no balancing technique applied
     oversample_undersample = 1
     # balancing factor (major/minor = balancing_normal_failed)
-    # TODO: We can calculate the imbalance ratio of the dataset and use this ratio to adjust the balancing factor.
+    # The balance factor is used to balance the number of normal and failed samples in the dataset, default as 'auto'
     balancing_normal_failed = 'auto'
     # length of the window
     history_signal = 32
@@ -180,6 +180,8 @@ if __name__ == '__main__':
     overlap = 1
     # split technique for dataset partitioning
     split_technique = 'random'
+    # interpolation technique for the rows with missing dates
+    interpolate_technique = 'linear'
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -216,6 +218,10 @@ if __name__ == '__main__':
             print('{:.<27}'.format(column,))
         print('Saving to pickle file...')
         df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+
+    # Interpolate data for the rows with missing dates
+    if interpolate_technique != 'None':
+        df = interpolate_ts(df, method=interpolate_technique)
 
     ## -------- ##
     # random: stratified without keeping time order
