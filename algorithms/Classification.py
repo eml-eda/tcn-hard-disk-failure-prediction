@@ -1,20 +1,15 @@
 import os
 import pandas as pd
-# import numpy as np
-# import math
-# import pickle
-# import matplotlib.pyplot as plt
 import sys
-# import argparse
 from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 from sklearn.ensemble import RandomForestClassifier
-# from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
 from sklearn.utils import shuffle
 from Networks_pytorch import *
 from sklearn.metrics import accuracy_score
+import torch.optim as optim
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -265,14 +260,14 @@ if __name__ == '__main__':
         else:
             print('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = getattr(optim, 'Adam')(net.parameters(), lr=lr)
+        optimizer = optim.Adam(net.parameters(), lr=lr)
     elif classifier == 'LSTM':
         # Step 1.6.3: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
         lr = 0.001
         batch_size = 256
         epochs = 300
         dropout = 0.1
-        #hidden state sizes (from [14])
+        # Hidden state sizes (from [14])
         # The dimensionality of the output space of the LSTM layer
         lstm_hidden_s = 64
         # The dimensionality of the output space of the first fully connected layer
