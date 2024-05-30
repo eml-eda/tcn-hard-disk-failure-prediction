@@ -61,7 +61,7 @@ def plot_hdd(X, fail, prediction):
     """
     fig, ax = plt.subplots()
     features = {
-        'Xiao_et_al': [
+        'total_features': [
             'date',
             'failure',
             'smart_1_normalized',
@@ -85,10 +85,9 @@ def plot_hdd(X, fail, prediction):
             'smart_199_raw'
         ]
     }
-    k = 0
-    for i in [1, 2, 7, 8, 9, 10]:
-        ax.plot(np.arange(X.shape[0]), X[:, i] + 0.01 * k, label=features['Xiao_et_al'][i + 2])
-        k += 1
+
+    for k, i in enumerate([1, 2, 7, 8, 9, 10]):
+        ax.plot(np.arange(X.shape[0]), X[:, i] + 0.01 * k, label=features['total_features'][i + 2])
     ax.set_ylabel('SMART features value [#]', fontsize=14, fontweight='bold', color='C0')
     ax.set_xlabel('time points', fontsize=14, fontweight='bold')
     legend_properties = {'weight': 'bold'}
@@ -274,7 +273,6 @@ def process_file(f, progress_list, args, name, all_data, total_files, model):
         data = pd.read_csv(f, header=0, parse_dates=['date'])
     
     data = data[data.model == model].copy()
-    data.drop(columns=['model'], inplace=True)
     data.failure = data.failure.astype('int')
     
     with lock:
@@ -314,29 +312,37 @@ def import_data(years, model, name, **args):
         print(f'Data loaded from {file}')
     except FileNotFoundError:
         print('Creating new DataFrame from CSV files.')
-        all_data = []
 
-        for y in years:
-            print('\nProcessing year:', y)
-            dir_path = os.path.join(script_dir, '..', 'HDD_dataset', y)
-            if not os.path.exists(dir_path):
-                print(f"Error: Directory {dir_path} does not exist.")
-                continue
-            files = glob.glob(os.path.join(script_dir, '..', 'HDD_dataset', y, '*.csv'))
-            total_files = len(files)
-            with Manager() as manager:
-                progress_list = manager.Value('i', 0)
+        with Manager() as manager:
+            all_data = manager.list()
+            progress_list = manager.Value('i', 0)
+
+            for y in years:
+                print('\nProcessing year:', y)
+                dir_path = os.path.join(script_dir, '..', 'HDD_dataset', y)
+                if not os.path.exists(dir_path):
+                    print(f"Error: Directory {dir_path} does not exist.")
+                    continue
+                files = glob.glob(os.path.join(dir_path, '*.csv'))
+                total_files = len(files)
+                print(f"Found {total_files} files in {dir_path}")
+
+                if total_files == 0:
+                    print(f"No CSV files found in {dir_path}")
+                    continue
+
                 with Pool() as p:
-                    results = p.starmap(
+                    p.starmap(
                         func=process_file,
                         iterable=[(f, progress_list, args, name, all_data, total_files, model) for f in files]
                     )
 
-        df = pd.concat(all_data, ignore_index=True)
-        df.set_index(['serial_number', 'date'], inplace=True)
-        df.sort_index(inplace=True)
-        df.to_pickle(file)
-        print(f'Data saved to {file}')
+            all_data = list(all_data)  # Convert managed list back to a regular list
+            df = pd.concat(all_data, ignore_index=True)
+            df.set_index(['serial_number', 'date'], inplace=True)
+            df.sort_index(inplace=True)
+            df.to_pickle(file)
+            print(f'Data saved to {file}')
 
     return df
 
@@ -382,6 +388,8 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
     hds_total = len(df.reset_index().serial_number.unique())
     print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove / hds_total * 100, 2)))
 
+    bad_hds = pd.Series(list(bad_hds))
+    bad_hds = bad_hds[bad_hds.isin(df.index)]
     df = df.drop(bad_hds, axis=0)
 
     num_fail = df.failure.sum()
@@ -430,11 +438,15 @@ def generate_failure_predictions(df, days, window):
     """
     pred_list = np.asarray([])
     valid_list = np.asarray([])
-    i = 0
-    for serial_num, inner_df in df.groupby(level=0):
+
+    # Filter out groups with length less than or equal to days + window
+    group_sizes = df.groupby(level=0).size()
+    df = df[df.index.get_level_values(0).isin(group_sizes[group_sizes > days + window].index)]
+
+    for i, (serial_num, inner_df) in enumerate(df.groupby(level=0), start=1):
         print('Analyzing HD {} number {} \r'.format(serial_num,i), end="\r")
-        slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9 
-        i += 1
+        slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9
+
         if inner_df.failure.max() == 1:
             # if the HD failed, we create a prediction array with 1s for the last 'days' days and 0s for the rest
             # np.ones(days) represents the period immediately before and including the failure
@@ -451,7 +463,7 @@ def generate_failure_predictions(df, days, window):
     print('HDs analyzed: {}'.format(i))
     pred_list = np.asarray(pred_list)
     valid_list = np.asarray(valid_list)
-    return pred_list, valid_list
+    return df, pred_list, valid_list
 
 
 def feature_extraction(X):
@@ -1071,18 +1083,19 @@ def feature_selection(df, num_features):
     features = []
     dict1 = {}
 
-    print('Feature selection')
+    print('Number of feature selected for classification:', num_features)
 
     # Step 1.4.2: For each feature in df.columns
     for feature in df.columns:
         # Step 1.4.2.1: if 'raw' in feature Perform T-test
         if 'raw' in feature:
             print('Feature: {}'.format(feature))
-        
-            # (Not used) Pearson correlation to measure the linear relationship between two variables
-            correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
-            print('Pearson correlation: %.3f' % correlation)
-            
+
+            if feature.replace('raw', 'normalized') in df.columns:
+                # (Not used) Pearson correlation to measure the linear relationship between two variables
+                correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
+                print('Pearson correlation: %.3f' % correlation)
+
             # T-test to compare the means of two groups of features
             _, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
             print('T-test p-value: %.3f' % p_val)
@@ -1106,7 +1119,7 @@ def feature_selection(df, num_features):
 
 if __name__ == '__main__':
     features = {
-        'Xiao_et_al': [
+        'total_features': [
             'date',
             'serial_number',
             'model',
@@ -1132,7 +1145,7 @@ if __name__ == '__main__':
             'smart_199_raw'
         ]
     }
-    #dataset = dataset[features['Xiao_et_al']]
+
     model = 'ST3000DM001'
     years = ['2013', '2014', '2015', '2016', '2017']
     df = import_data(years, model, features)
@@ -1142,7 +1155,7 @@ if __name__ == '__main__':
         print('{:.<27}{}%'.format(column, missing))
     # drop bad HDs
     
-    bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=30)
+    bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=2)
     df['predict_val'] = generate_failure_predictions(df, days=7) # define RUL piecewise
     ## -------- ##
     # random: stratified without keeping time

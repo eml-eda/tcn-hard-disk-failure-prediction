@@ -102,7 +102,7 @@ if __name__ == '__main__':
     # Feature Selection Subflowchart
     # Step 1: Define empty lists and dictionary
     features = {
-        'Xiao_et_al': [
+        'total_features': [
             'date',
             'serial_number',
             'model',
@@ -192,9 +192,8 @@ if __name__ == '__main__':
             df = import_data(years=years, model=model, name='iSTEP', features=features)
         else:
             df = import_data(years=years, model=model, name='iSTEP')
-        df.set_index(['serial_number', 'date'], inplace=True)
+
         print('Data imported successfully, processing smart attributes...')
-        # print(df.head())
         for column in list(df):
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
             print('{:.<27}{}%'.format(column, missing))
@@ -203,7 +202,12 @@ if __name__ == '__main__':
         # predict_val represents the prediction value of the failure
         # validate_val represents the validation value of the failure
         # Step 1.3: Define RUL(Remain useful life) Piecewise
-        df['predict_val'], df['validate_val'] = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal)
+        df, pred_list, valid_list = generate_failure_predictions(df, days=days_considered_as_failure, window=history_signal)
+
+        # Create a new DataFrame with the results since the previous function may filter out some groups from the DataFrame
+        df['predict_val'] = pred_list
+        df['validate_val'] = valid_list
+
         if ranking != 'None':
             # Step 1.4: Feature Selection: Subflow chart of Main Classification Process
             df = feature_selection(df, num_features)
