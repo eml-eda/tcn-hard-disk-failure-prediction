@@ -99,7 +99,7 @@ def factors(n):
 
 if __name__ == '__main__':
     # ------------------ #
-    # Feature Selection Subflowchart 
+    # Feature Selection Subflowchart
     # Step 1: Define empty lists and dictionary
     features = {
         'Xiao_et_al': [
@@ -115,7 +115,7 @@ if __name__ == '__main__':
             'smart_12_raw',
             'smart_183_raw',
             'smart_184_normalized',
-            'smart_184_raw', 
+            'smart_184_raw',
             'smart_187_normalized',
             'smart_187_raw',
             'smart_189_normalized', 
@@ -133,15 +133,15 @@ if __name__ == '__main__':
             'model',
             'failure',
             'smart_5_raw',
-            'smart_3_raw', 
+            'smart_3_raw',
             'smart_10_raw',
             'smart_12_raw',
             'smart_4_raw',
-            'smart_194_raw', 
+            'smart_194_raw',
             'smart_1_raw',
             'smart_9_raw',
             'smart_192_raw',
-            'smart_193_raw', 
+            'smart_193_raw',
             'smart_197_raw',
             'smart_198_raw',
             'smart_199_raw'
@@ -151,7 +151,7 @@ if __name__ == '__main__':
     # here you can select the model. This is the one tested.
     model = 'ST3000DM001'
     # Correct years for the model
-    years = ['2013', '2014', '2015', '2016', '2017']
+    years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
     # many parameters that could be changed, both for unbalancing, for networks and for features.
     windowing = 1
     # minimum number of days for a HDD to be filtered out
@@ -193,13 +193,13 @@ if __name__ == '__main__':
         else:
             df = import_data(years=years, model=model, name='iSTEP')
         df.set_index(['serial_number', 'date'], inplace=True)
-        print("DF index name:", df.index.names)
-        print(df.head())
+        print('Data imported successfully, processing smart attributes...')
+        # print(df.head())
         for column in list(df):
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
             print('{:.<27}{}%'.format(column, missing))
         # Step 1.2: Filter out the bad HDDs.
-        bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
+        bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=2)
         # predict_val represents the prediction value of the failure
         # validate_val represents the validation value of the failure
         # Step 1.3: Define RUL(Remain useful life) Piecewise

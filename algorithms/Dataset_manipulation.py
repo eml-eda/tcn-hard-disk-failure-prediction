@@ -21,7 +21,7 @@ import scipy.stats
 import re
 import dask.dataframe as dd
 from collections import Counter
-## here there are many functions used inside Classification.py
+from multiprocessing import Pool, Manager, Lock
 
 
 def plot_feature(dataset):
@@ -113,7 +113,7 @@ def pandas_to_3dmatrix(read_dir, model, years, dataset_raw):
         FileNotFoundError: If the matrix file is not found.
 
     """
-    join_years = '_'.join(years) + '_'
+    join_years = '_' + '_'.join(years)
     name_file = f'Matrix_Dataset_{join_years}.pkl'
 
     try:
@@ -185,7 +185,8 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
     """
 
     name_file = 'Final_Dataset.pkl'
-    read_dir = os.path.join('..', 'data_input')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    read_dir = os.path.join(script_dir, '..', 'output')
 
     try:
         with open(os.path.join(read_dir, name_file), 'rb') as handle:
@@ -250,6 +251,41 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
 
     return dataset
 
+def process_file(f, progress_list, args, name, all_data, total_files, model):
+    """
+    Process a file, update the progress, and return the data.
+
+    Parameters:
+    - f: str - The file path.
+    - progress_list: multiprocessing.Value - A shared value to track progress.
+    - args: dict - A dictionary of arguments.
+    - name: str - The name of the feature.
+    - all_data: list - A list to store all the data.
+    - total_files: int - The total number of files to process.
+    - model: str - The model number.
+
+    Returns:
+    - data: pandas.DataFrame - The processed data.
+    """
+    lock = Lock()
+    if 'features' in args and name in args['features']:
+        data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
+    else:
+        data = pd.read_csv(f, header=0, parse_dates=['date'])
+    
+    data = data[data.model == model].copy()
+    data.drop(columns=['model'], inplace=True)
+    data.failure = data.failure.astype('int')
+    
+    with lock:
+        progress_list.value += 1
+
+    all_data.append(data)
+    progress_percentage = (progress_list.value / total_files) * 100
+    print(f'Progress: {progress_percentage:.2f}%', end="\r")
+
+    return data
+
 def import_data(years, model, name, **args):
     """ Import hard drive data from csvs on disk.
     
@@ -278,22 +314,23 @@ def import_data(years, model, name, **args):
         print(f'Data loaded from {file}')
     except FileNotFoundError:
         print('Creating new DataFrame from CSV files.')
-        cwd = os.getcwd()
         all_data = []
 
         for y in years:
-            print(f'Analyzing year {y}', end="\r")
-            # Fix the directory name
-            for f in glob.glob(os.path.join(cwd, '..', 'HDD_dataset', y, '*.csv')):
-                try:
-                    data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
-                except ValueError:
-                    data = pd.read_csv(f, header=0, parse_dates=['date'])
-                
-                data = data[data.model == model].copy()
-                data.drop(columns=['model'], inplace=True)
-                data.failure = data.failure.astype('int')
-                all_data.append(data)
+            print('\nProcessing year:', y)
+            dir_path = os.path.join(script_dir, '..', 'HDD_dataset', y)
+            if not os.path.exists(dir_path):
+                print(f"Error: Directory {dir_path} does not exist.")
+                continue
+            files = glob.glob(os.path.join(script_dir, '..', 'HDD_dataset', y, '*.csv'))
+            total_files = len(files)
+            with Manager() as manager:
+                progress_list = manager.Value('i', 0)
+                with Pool() as p:
+                    results = p.starmap(
+                        func=process_file,
+                        iterable=[(f, progress_list, args, name, all_data, total_files, model) for f in files]
+                    )
 
         df = pd.concat(all_data, ignore_index=True)
         df.set_index(['serial_number', 'date'], inplace=True)
@@ -328,17 +365,16 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
         if len(inner_df) < min_days:  # identify HDs with too few power-on days
             bad_power_hds.append(serial_num)
 
-        inner_df = inner_df.droplevel(level=0)
-        inner_df = inner_df.asfreq('D')  # Convert inner_df to daily frequency
+        inner_df = inner_df.droplevel(level=0).asfreq('D')  # Convert inner_df to daily frequency
+
+        # Find the moving average of missing values within a window of time_window days in any column of the DataFrame
+        moving_avg_missing = inner_df.isna().rolling(time_window).mean()
 
         # Find the maximum number of missing values within any window of time_window days in any column of the DataFrame
-        # Commented out to avoid to many missing values
-        # n_missing = max(inner_df.isna().rolling(time_window).sum().max()) # original code DO NOT CHANGE
+        n_missing = inner_df.isna().rolling(time_window).sum()
 
-        # if n_missing >= tolerance:  # identify HDs with too many missing values #original code DO NOT CHANGE
-        #     bad_missing_hds.append(serial_num) # original code DO NOT CHANGE
-
-
+        # Identify HDs with too many missing values, compared to the moving average
+        bad_missing_hds = n_missing[n_missing > moving_avg_missing * tolerance].index.tolist()
 
     bad_hds = set(bad_missing_hds + bad_power_hds)
     print(f"Filter result: bad_missing_hds: {len(bad_missing_hds)}, bad_power_hds: {len(bad_power_hds)}")
@@ -358,19 +394,18 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
     return bad_missing_hds, bad_power_hds, df
 
 def interpolate_ts(df, method='linear'):
-    
+
     """ Interpolate hard drive Smart attribute time series.
-    
+
     :param df: Input dataframe.
     :param method: String, interpolation method.
     :return: Dataframe with interpolated values.
     """
-    
+
     interp_df = pd.DataFrame()
 
     for serial_num, inner_df in df.groupby(level=0):
-        inner_df = inner_df.droplevel(level=0)
-        inner_df = inner_df.asfreq('D') 
+        inner_df = inner_df.droplevel(level=0).asfreq('D') 
         inner_df.interpolate(method=method, axis=0, inplace=True)
         inner_df['serial_number'] = serial_num
         inner_df = inner_df.reset_index()
