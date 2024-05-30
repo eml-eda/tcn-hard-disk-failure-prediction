@@ -6,7 +6,6 @@ import pandas as pd
 # import matplotlib.pyplot as plt
 import sys
 # import argparse
-# from output.Networks_pytorch import *
 from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
@@ -15,6 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 # from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
 from sklearn.utils import shuffle
 from Networks_pytorch import *
+from sklearn.metrics import accuracy_score
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -43,10 +43,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         model.fit(X_train[:, :], Y_train)
         prediction = model.predict(X_test)
         Y_test_real = Y_test
+        accuracy = accuracy_score(Y_test_real, prediction)
+        print(f'RandomForest Prediction Accuracy: {accuracy * 100:.4f}%')
         report_metrics(Y_test_real, prediction, metric)
     elif classifier == 'TCN':
         # Step 1.7.2: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
-        # net_train_validate_TCN(args['net'], args['optimizer'], X_train, Y_train, X_test, Y_test, args['epochs'], args['batch_size'], args['lr'])
         # Initialize the TCNTrainer with the appropriate parameters
         tcn_trainer = TCNTrainer(
             model=args['net'],                      # The TCN model
@@ -59,11 +60,6 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         tcn_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'LSTM':
         # Step 1.7.3: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
-        # train_dataset = FPLSTMDataset(X_train, Y_train)
-        # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
-        # test_dataset = FPLSTMDataset(X_test, Y_test) # Changed passing parameters to Y_test, it is already converted to tensor
-        # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args['batch_size'], shuffle=True, collate_fn=FPLSTM_collate)
-        # net_train_validate_LSTM(args['net'], args['optimizer'], train_loader, test_loader, args['epochs'], X_test.shape[0], Xtrain.shape[0], args['lr'])
         lstm_trainer = LSTMTrainer(
             model=args['net'],
             optimizer=args['optimizer'],
@@ -151,24 +147,25 @@ if __name__ == '__main__':
             'smart_199_raw'
         ]
     }
-    #model = 'ST4000DM000'
+
     # here you can select the model. This is the one tested.
     model = 'ST3000DM001'
-    #years = ['2016', '2017', '2018']
-    
     # Correct years for the model
     years = ['2013', '2014', '2015', '2016', '2017']
     # many parameters that could be changed, both for unbalancing, for networks and for features.
     windowing = 1
+    # minimum number of days for a HDD to be filtered out
     min_days_HDD = 115
     # TODO: Can be adjusted by dynamic parameters
     days_considered_as_failure = 7
+    # percentage of the test set
     test_train_perc = 0.3
     # type of oversampling: 0 means undersample, 1 means oversample, 2 means no balancing technique applied
-    oversample_undersample = 2
+    oversample_undersample = 1
     # balancing factor (major/minor = balancing_normal_failed)
     # TODO: We can calculate the imbalance ratio of the dataset and use this ratio to adjust the balancing factor.
-    balancing_normal_failed = 20
+    balancing_normal_failed = 'auto'
+    # length of the window
     history_signal = 32
     # type of classifier
     classifier = 'TCN'
@@ -177,8 +174,12 @@ if __name__ == '__main__':
     CUDA_DEV = "0"
     # if automatically select best features
     ranking = 'Ok'
+    # number of SMART features to select
     num_features = 18
-    overlap = 2
+    # overlap option of the window
+    overlap = 1
+    # split technique for dataset partitioning
+    split_technique = 'random'
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -197,7 +198,6 @@ if __name__ == '__main__':
         for column in list(df):
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
             print('{:.<27}{}%'.format(column, missing))
-        # drop bad HDs
         # Step 1.2: Filter out the bad HDDs.
         bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=30)
         # predict_val represents the prediction value of the failure
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         for column in list(df):
             print('{:.<27}'.format(column,))
         print('Saving to pickle file...')
-        #df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
     ## -------- ##
     # random: stratified without keeping time order
@@ -224,7 +224,7 @@ if __name__ == '__main__':
         overlap=overlap,
         rank=ranking,
         num_features=num_features,
-        technique='random',
+        technique=split_technique,
         test_train_perc=test_train_perc,
         windowing=windowing,
         window_dim=history_signal,
@@ -243,11 +243,10 @@ if __name__ == '__main__':
         batch_size = 256
         lr = 0.001
         num_inputs = Xtrain.shape[1]
-        print('number of inputes:', num_inputs)
         # Calculate the data dimension based on the history signal and overlap. 
         # If overlap == 1, the overlap option is chosed as complete overlap. If overlap == 2, the overlap option is chosed as dynamic overlap based on the factors of window_dim
         data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
-        print('data_dim:', data_dim)
+        print(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
         net, optimizer = init_net(lr, data_dim, num_inputs)
         epochs = 200
     elif classifier == 'LSTM':
@@ -278,26 +277,29 @@ if __name__ == '__main__':
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
-    #try:
-    classification(
-        X_train=Xtrain,
-        Y_train=ytrain,
-        X_test=Xtest,
-        Y_test=ytest,
-        classifier=classifier,
-        metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
-        net=net,
-        optimizer=optimizer,
-        epochs=epochs,
-        batch_size=batch_size,
-        lr=lr
-    )
-    #except:
-        # classification(
-        #     X_train=Xtrain,
-        #     Y_train=ytrain,
-        #     X_test=Xtest,
-        #     Y_test=ytest,
-        #     classifier=classifier,
-        #     metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision']
-        # )
+    try:
+        # Parameters for TCN and LSTM networks
+        classification(
+            X_train=Xtrain,
+            Y_train=ytrain,
+            X_test=Xtest,
+            Y_test=ytest,
+            classifier=classifier,
+            metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
+            net=net,
+            optimizer=optimizer,
+            epochs=epochs,
+            batch_size=batch_size,
+            lr=lr
+        )
+    except:
+        # Parameters for RandomForest
+        classification(
+            X_train=Xtrain,
+            Y_train=ytrain,
+            X_test=Xtest,
+            Y_test=ytest,
+            classifier=classifier,
+            # FDR, FAR, F1, recall, precision are not calculated for RandomForest, it will report as 0.0
+            metric=['RMSE', 'MAE']
+        )

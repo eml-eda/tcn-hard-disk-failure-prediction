@@ -165,7 +165,7 @@ def pandas_to_3dmatrix(read_dir, model, years, dataset_raw):
 
     return dataset
 
-def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7, resampler_balancing=5, oversample_undersample=0):
+def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7, resampler_balancing='auto', oversample_undersample=0):
     """
     Convert a 3D matrix to datasets for training and testing.
 
@@ -174,7 +174,7 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
         window (int, optional): The size of the sliding window. Defaults to 1.
         divide_hdd (int, optional): Flag to divide the HDDs. Defaults to 1.
         training_percentage (float, optional): The percentage of data to use for training. Defaults to 0.7.
-        resampler_balancing (int, optional): The resampler balancing factor. Defaults to 5.
+        resampler_balancing (float, optional): The resampler balancing factor. Defaults to 'auto'.
         oversample_undersample (int, optional): The type of resampling to use. Defaults to 0.
 
     Returns:
@@ -240,7 +240,7 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
             X_test, Y_test, HD_number_test = X_test[non_nan_test], Y_test[non_nan_test], HD_number_test[non_nan_test]
 
             # Resampling
-            resampler = RandomUnderSampler(sampling_strategy=1 / resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(sampling_strategy=1 / resampler_balancing, random_state=42)
+            resampler = RandomUnderSampler(sampling_strategy=resampler_balancing, random_state=42) if oversample_undersample == 0 else SMOTE(sampling_strategy=resampler_balancing, random_state=42)
             X_train, Y_train = resampler.fit_resample(X_train, Y_train)
 
             dataset = {'X_train': X_train, 'Y_train': Y_train, 'X_test': X_test, 'Y_test': Y_test, 'HDn_test': HD_number_test}
@@ -459,7 +459,7 @@ class DatasetPartitioner:
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
     def __init__(self, df, model, overlap=0, rank='None', num_features=10, technique='random',
-                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing=5, oversample_undersample=0):
+                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample=0):
         """
         Initialize the DatasetPartitioner object.
         
@@ -473,7 +473,7 @@ class DatasetPartitioner:
         - test_train_perc (float): The percentage of data to be used for testing (default: 0.2).
         - windowing (int): The windowing value (default: 1).
         - window_dim (int): The window dimension (default: 5).
-        - resampler_balancing (int): The resampler balancing value (default: 5).
+        - resampler_balancing (float): The resampler balancing factor (default: auto).
         - oversample_undersample (int): The oversample/undersample value (default: 0).
 
         """
@@ -644,7 +644,7 @@ class DatasetPartitioner:
                 windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
         elif self.overlap == 2:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
             # Get the factors of window_dim
-            window_dim_divisors = self.factors(self.window_dim)  # output: [2, 2, 2, 2, 2]
+            window_dim_divisors = self.factors(self.window_dim)
             total_shifts = 0
             previous_down_factor = 1
             serials = self.df['serial_number']
@@ -666,11 +666,11 @@ class DatasetPartitioner:
                 windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
         else:  # If the overlap is other value, then we only completely overlap the dataset for the failed HDDs, and dynamically overlap the dataset for the good HDDs
             # Get the factors of window_dim
-            window_dim_divisors = self.factors(self.window_dim)  # output: [2, 2, 2, 2, 2]
+            window_dim_divisors = self.factors(self.window_dim)
             total_shifts = 0
             previous_down_factor = 1
             serials = self.df['serial_number']
-            df_failed = self.df[self.df['predict_val']==1]
+            df_failed = self.df[self.df['validate_val']==1]
             windowed_df_failed = df_failed
             for i in np.arange(self.window_dim - 1):
                 print(f'Concatenating time - {i} \r', end="\r")
@@ -701,8 +701,8 @@ class DatasetPartitioner:
         
         #print('perform_windowing:', self.df.columns)
 
-        # TODO: We need to test the generated file here
-        # final_df.to_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
+        # Generate the final DataFrame
+        final_df.to_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
         return self.rename_columns(final_df)
 
     def split_dataset(self, df):
@@ -726,7 +726,6 @@ class DatasetPartitioner:
             y = df['predict_val']   # y represents the prediction value (Series)
             df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
             X = df.values   # X represents the smart features (ndarray)
-            print('\n----------Number of columns', df.shape[1])
 
             if self.windowing == 1:
                 # Currently we can only choose overlap == 1 since other options will cause the windows dimension to change, inconsistent with the dim of the network
@@ -923,7 +922,7 @@ class DatasetPartitioner:
         """
 
         if self.oversample_undersample != 2:
-            resampler = RandomUnderSampler(sampling_strategy=1 / self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=1 / self.resampler_balancing, random_state=42)
+            resampler = RandomUnderSampler(sampling_strategy=self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=self.resampler_balancing, random_state=42)
             Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler) if self.windowing else resampler.fit_resample(Xtrain, ytrain)
         else:
             ytrain = ytrain.astype(int)
@@ -952,7 +951,6 @@ class DatasetPartitioner:
         ytrain = ytrain.astype(int)
         Xtrain, ytrain = rus.fit_resample(Xtrain, ytrain)
         Xtrain = Xtrain.reshape(Xtrain.shape[0], dim1, dim2)
-        #ytest = ytest.astype(int)
         return Xtrain, ytrain
 
     def get_failed_not_failed_drives(self, df):
