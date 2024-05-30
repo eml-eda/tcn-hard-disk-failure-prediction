@@ -721,34 +721,28 @@ class DatasetPartitioner:
         - ytrain (Series): The training labels.
         - ytest (Series): The test labels.
         """
+        df = self.preprocess_random(df)
         if self.technique == 'random':
-            df = self.preprocess_random(df)
             y = df['predict_val']   # y represents the prediction value (Series)
             df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
             X = df.values   # X represents the smart features (ndarray)
 
             if self.windowing == 1:
                 # Currently we can only choose overlap == 1 since other options will cause the windows dimension to change, inconsistent with the dim of the network
-                if self.overlap == 1:  # If the overlap option is chosen as complete overlap
-                    X = self.arrays_to_matrix(X, self.window_dim)
-                else:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
-                    data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
-                    X = self.arrays_to_matrix(X, data_dim)
+                data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1 if self.overlap != 1 else self.window_dim
+                X = self.arrays_to_matrix(X, data_dim)
             print('Augmented data of predict_val is: ', Counter(y))
             # Print the shapes of the train and test sets
             # Xtrain: ndarray, Xtest: ndarray, ytrain: Series, ytest: Series
             Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
-            # print('Xtrain shape:', np.shape(Xtrain))
-            # print('Xtest shape:', np.shape(Xtest))
-            # print('ytrain shape:', np.shape(ytrain))
-            # print('ytest shape:', np.shape(ytest))
+
             return self.balance_data(Xtrain, ytrain, Xtest, ytest) 
         
         elif self.technique == 'hdd':
             # Step 4.2.2: Apply Sampling Techniques.
             np.random.seed(0)
-            df.set_index(['serial_number', 'date'], inplace=True)
-            df.sort_index(inplace=True)
+            #df.set_index(['serial_number', 'date'], inplace=True)  # BUG:
+            #df.sort_index(inplace=True)
 
             failed, not_failed = self.get_failed_not_failed_drives(df)
             test_failed, test_not_failed = self.get_test_drives(failed, not_failed)
@@ -757,33 +751,30 @@ class DatasetPartitioner:
 
             df_train = df.loc[train, :].sort_index()
             df_test = df.loc[test, :].sort_index()
-            df_train.reset_index(inplace=True)
-            df_test.reset_index(inplace=True)
+            #df_train.reset_index(inplace=True)  # BUG:
+            #df_test.reset_index(inplace=True)
 
             ytrain = df_train.predict_val
             ytest = df_test.predict_val
 
-            df_train.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
-            df_test.drop(columns=['serial_number', 'date', 'failure', 'predict_val'], inplace=True)
+            df_train.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
+            df_test.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
 
             Xtrain = df_train.values
             Xtest = df_test.values
 
             if self.windowing == 1:
                 # Currently we can only choose overlap == 1 since other options will cause the windows dimension to change, inconsistent with the dim of the network
-                if self.overlap == 1:  # If the overlap option is chosed as complete overlap
-                    Xtrain = self.arrays_to_matrix(Xtrain, self.window_dim)
-                    Xtest = self.arrays_to_matrix(Xtest, self.window_dim)
-                else:  # If the overlap option chosed as dynamic overlap based on the factors of window_dim
-                    data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1
-                    Xtrain = self.arrays_to_matrix(Xtrain, data_dim)
-                    Xtest = self.arrays_to_matrix(Xtest, data_dim)
+                data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1 if self.overlap != 1 else self.window_dim
+                Xtrain = self.arrays_to_matrix(Xtrain, data_dim)
+                Xtest = self.arrays_to_matrix(Xtest, data_dim)
+
             return self.balance_data(Xtrain, ytrain, Xtest, ytest)
         
         else:
-            # Step 4.2.3: Apply Sampling Techniques.
-            df.set_index('date', inplace=True)
-            df.sort_index(inplace=True)
+            # FIXME: Step 4.2.3: Apply Sampling Techniques.
+            #df.set_index('date', inplace=True)
+            #df.sort_index(inplace=True)
 
             y = df.predict_val
             df.drop(columns=['serial_number', 'failure', 'predict_val'], inplace=True)
@@ -877,8 +868,8 @@ class DatasetPartitioner:
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
 
-        print('Dropping invalid windows ')   
-        print(df.columns)
+        print('Dropping invalid windows')   
+        # print(df.columns)
         df.reset_index(inplace=True)
         
         return df
@@ -965,14 +956,20 @@ class DatasetPartitioner:
         - list: The list of failed drives.
         - list: The list of not failed drives.
         """
-        if self.windowing == 1:
-            failed = [h[0] for h in list(df[df.predict_val == 1].index)]
-        else:
-            failed = [h[0] for h in list(df[df.failure == 1].index)]
-        failed = list(set(failed))
 
-        not_failed = [h[0] for h in list(df.index) if h[0] not in failed]
-        not_failed = list(set(not_failed))
+        if self.windowing == 1:
+            failed = df[df.predict_val == 1].index.tolist()
+        else:
+            failed = df[df.failure == 1].index.tolist()
+
+        failed_set = set(failed)
+        #not_failed = [h for h in df.index if h not in failed_set]
+        not_failed = []
+        for i, h in enumerate(df.index):
+            if h not in failed_set:
+                not_failed.append(h)
+            print(f"\rProcessing index: {i+1}/{len(df.index)}", end="")
+        
         return failed, not_failed
 
     def get_test_drives(self, failed, not_failed):
@@ -988,8 +985,11 @@ class DatasetPartitioner:
         - list: The list of failed test drives.
         - list: The list of not failed test drives.
         """
-        test_failed = list(np.random.choice(failed, size=int(len(failed) * self.test_train_perc)))
-        test_not_failed = list(np.random.choice(not_failed, size=int(len(not_failed) * self.test_train_perc)))
+        test_failed_size = int(len(failed) * self.test_train_perc)
+        test_not_failed_size = int(len(not_failed) * self.test_train_perc)
+
+        test_failed = np.random.choice(failed, size=test_failed_size, replace=False).tolist()
+        test_not_failed = np.random.choice(not_failed, size=test_not_failed_size, replace=False).tolist()
         return test_failed, test_not_failed
 
     def get_train_drives(self, failed, not_failed, test):
@@ -1005,9 +1005,10 @@ class DatasetPartitioner:
         Returns:
         - list: The list of training drives.
         """
-        train = failed + not_failed
-        train = list(filter(lambda x: x not in test, train))
-        return train
+        # Subtract test drives from total drives to get training drives
+        train_set = set(failed + not_failed) - set(test)
+        # Convert the resulting set back to a list
+        return list(train_set)
 
     def __iter__(self):
         """
@@ -1033,7 +1034,6 @@ def feature_selection(df, num_features):
     """
     # Step 1.4.1: Define empty lists and dictionary
     features = []
-    p = []
     dict1 = {}
 
     print('Feature selection')
@@ -1101,7 +1101,7 @@ if __name__ == '__main__':
     model = 'ST3000DM001'
     years = ['2013', '2014', '2015', '2016', '2017']
     df = import_data(years, model, features)
-    print(df.head())
+    # print(df.head())
     for column in list(df):
         missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
         print('{:.<27}{}%'.format(column, missing))

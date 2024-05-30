@@ -583,8 +583,7 @@ class TCNTrainer:
         self.model.eval()  # Set the model to evaluation mode
         test_loss = 0  # Initialize the total test loss to 0
         correct = 0  # Initialize the number of correct predictions to 0
-        batchsize = 30000  # Define the number of samples in each batch
-        nbatches = Xtest.shape[0] // batchsize  # Calculate the number of batches
+        nbatches = Xtest.shape[0] // self.batch_size  # Calculate the number of batches
         predictions = np.ndarray(Xtest.shape[0])  # Initialize an array to store the model's predictions
         criterion = torch.nn.CrossEntropyLoss()  # Define the loss function
 
@@ -592,8 +591,8 @@ class TCNTrainer:
         with torch.no_grad():
             for batch_idx in np.arange(nbatches + 1):
                 # Extract the data and target for this batch
-                data, target = Variable(torch.Tensor(Xtest[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :, :]),
-                                    volatile=True), Variable(torch.Tensor(ytest[(batch_idx * batchsize):((batch_idx + 1) * batchsize)]))
+                data, target = Variable(torch.Tensor(Xtest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]),
+                                    volatile=True), Variable(torch.Tensor(ytest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]))
                 # If CUDA is available, move the data and target to the GPU
                 if torch.cuda.is_available():
                     data, target = data.cuda(), target.cuda()
@@ -606,7 +605,7 @@ class TCNTrainer:
                 # Compare predictions to true label
                 correct += pred.eq(target.data.view_as(pred)).cpu().sum()
                 # Store the predictions for this batch
-                predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
+                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
 
         # Calculate the average loss over all of the batches
         avg_test_loss = test_loss / Xtest.shape[0]

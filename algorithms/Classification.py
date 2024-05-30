@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     try:
         # Step 1: Load the dataset from pkl file.
-        df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
     except:
         # Step 1.1: Import the dataset from the raw data.
         if ranking == 'None':
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         for column in list(df):
             print('{:.<27}'.format(column,))
         print('Saving to pickle file...')
-        df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
     ## -------- ##
     # random: stratified without keeping time order
