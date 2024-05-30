@@ -8,6 +8,9 @@ from sklearn.utils import shuffle
 import math
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
+import os
+
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
 class FPLSTMDataset(torch.utils.data.Dataset):
@@ -436,7 +439,18 @@ class LSTMTrainer:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = self.lr
         self.writer.close()
-        print('Training completed')
+        print('Training completed, saving the model...')
+
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+        # Create the directory if it doesn't exist
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        # Format as string
+        now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
+        # Save the model
+        model_path = os.path.join(model_dir, f'lstm_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        torch.save(self.model.state_dict(), model_path)
+        print('Model saved as:', model_path)
 
 class TCNTrainer:
     def __init__(self, model, optimizer, epochs, batch_size, lr):
@@ -625,4 +639,15 @@ class TCNTrainer:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = self.lr
         self.writer.close()
-        print('Training completed')
+        print('Training completed, saving the model...')
+
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+        # Create the directory if it doesn't exist
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        # Format as string
+        now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
+        # Save the model
+        model_path = os.path.join(model_dir, f'tcn_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        torch.save(self.model.state_dict(), model_path)
+        print('Model saved as:', model_path)

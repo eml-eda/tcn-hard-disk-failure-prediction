@@ -151,7 +151,7 @@ if __name__ == '__main__':
     windowing = 1
     # minimum number of days for a HDD to be filtered out
     min_days_HDD = 115
-    # TODO: Can be adjusted by dynamic parameters
+    # Days considered as failure
     days_considered_as_failure = 7
     # percentage of the test set
     test_train_perc = 0.3
@@ -212,7 +212,12 @@ if __name__ == '__main__':
         for column in list(df):
             print('{:.<27}'.format(column,))
         print('Saving to pickle file...')
-        df.to_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+
+        output_dir = os.path.join(script_dir, '..', 'output')
+        # Create the directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        df.to_pickle(os.path.join(output_dir, f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
     # Interpolate data for the rows with missing dates
     if interpolate_technique != 'None':

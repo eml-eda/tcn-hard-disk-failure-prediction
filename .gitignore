@@ -165,4 +165,5 @@ temp/
 HDD_dataset/
 output/
 runs/
+model/
 NUL
