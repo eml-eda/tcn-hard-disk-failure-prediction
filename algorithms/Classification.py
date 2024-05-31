@@ -6,10 +6,50 @@ if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.utils import shuffle
 from Networks_pytorch import *
 from sklearn.metrics import accuracy_score
 import torch.optim as optim
+from sklearn import svm
+from tqdm import tqdm
+
+
+def train_and_evaluate_model(model, classifier_name, X_train, Y_train, X_test, Y_test, metric, n_iterations=100):
+    """
+    Trains and evaluates a machine learning model.
+
+    Args:
+        model (object): The machine learning model to be trained and evaluated.
+        classifier_name (str): The name of the classifier.
+        X_train (array-like): The training data features.
+        Y_train (array-like): The training data labels.
+        X_test (array-like): The test data features.
+        Y_test (array-like): The test data labels.
+        metric (str): The metric to be used for evaluation.
+        n_iterations (int, optional): The number of iterations for training. Defaults to 100.
+
+    Returns:
+        None
+    """
+    X_train, Y_train = shuffle(X_train, Y_train)
+
+    # Split the training data into 10 batches
+    batch_size = len(X_train) // n_iterations
+    pbar = tqdm(total=n_iterations)  # Initialize tqdm with the total number of batches
+
+    for i in range(0, len(X_train), batch_size):
+        model.fit(X_train[i:i+batch_size, :], Y_train[i:i+batch_size])
+        pbar.update(1)  # Update the progress bar
+
+    pbar.close()
+    prediction = model.predict(X_test)
+    Y_test_real = Y_test
+    accuracy = accuracy_score(Y_test_real, prediction)
+    print(f'{classifier_name} Prediction Accuracy: {accuracy * 100:.4f}%')
+    report_metrics(Y_test_real, prediction, metric)
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -28,21 +68,30 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     - None
     """
     print('Classification using {} is starting'.format(classifier))
-    Y_test_real = []
-    prediction = []
+
+    n_iterations = 100
     if classifier == 'RandomForest':
-        # Step 1.7.1: Perform Classification using RandomForest: Use RandomForest Libaray. Train and validate the network using RandomForest.
-        X_train, Y_train = shuffle(X_train, Y_train)
-        # Use third-party RandomForest library.
-        model = RandomForestClassifier(n_estimators=30, min_samples_split=10, random_state=3)
-        model.fit(X_train[:, :], Y_train)
-        prediction = model.predict(X_test)
-        Y_test_real = Y_test
-        accuracy = accuracy_score(Y_test_real, prediction)
-        print(f'RandomForest Prediction Accuracy: {accuracy * 100:.4f}%')
-        report_metrics(Y_test_real, prediction, metric)
+        # Step 1.7.1: Perform Classification using RandomForest.
+        model = RandomForestClassifier(n_estimators=n_iterations, min_samples_split=10, random_state=3, warm_start=True)
+        train_and_evaluate_model(model, 'RandomForest', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+    elif classifier == 'KNeighbors':
+        # Step 1.7.2: Perform Classification using KNeighbors.
+        model = KNeighborsClassifier(n_neighbors=5)
+        train_and_evaluate_model(model, 'KNeighbors', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+    elif classifier == 'DecisionTree':
+        # Step 1.7.3: Perform Classification using DecisionTree.
+        model = DecisionTreeClassifier()
+        train_and_evaluate_model(model, 'DecisionTree', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+    elif classifier == 'LogisticRegression':
+        # Step 1.7.4: Perform Classification using LogisticRegression.
+        model = LogisticRegression()
+        train_and_evaluate_model(model, 'LogisticRegression', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+    elif classifier == 'SVM':
+        # Step 1.7.5: Perform Classification using SVM.
+        model = svm.SVC()
+        train_and_evaluate_model(model, 'SVM', X_train, Y_train, X_test, Y_test, metric, n_iterations)
     elif classifier == 'TCN':
-        # Step 1.7.2: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
+        # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
         tcn_trainer = TCNTrainer(
             model=args['net'],                      # The TCN model
@@ -54,25 +103,25 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         # Run training and testing using the TCNTrainer
         tcn_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'LSTM':
-        # Step 1.7.3: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
+        # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
         lstm_trainer = LSTMTrainer(
-            model=args['net'],
-            optimizer=args['optimizer'],
-            epochs=args['epochs'],
-            batch_size=args['batch_size'],
-            lr=args['lr']
+            model=args['net'],                      # The MLP model
+            optimizer=args['optimizer'],            # Optimizer for the model
+            epochs=args['epochs'],                  # Total number of epochs
+            batch_size=args['batch_size'],          # Batch size for training
+            lr=args['lr']                           # Learning rate
         )
         # Run training and testing using the TCNTrainer
         lstm_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'MLP':
-        # Step 1.7.4: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
+        # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
         # Initialize the MLPTrainer with the appropriate parameters
         mlp_trainer = MLPTrainer(
-            model=net,                      # The MLP model
-            optimizer=optimizer,            # Optimizer for the model
-            epochs=epochs,                  # Total number of epochs
-            batch_size=batch_size,          # Batch size for training
-            lr=lr                           # Learning rate
+            model=args['net'],                      # The MLP model
+            optimizer=args['optimizer'],            # Optimizer for the model
+            epochs=args['epochs'],                  # Total number of epochs
+            batch_size=args['batch_size'],          # Batch size for training
+            lr=args['lr']                           # Learning rate
         )
         # Run training and testing using the MLPTrainer
         mlp_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -175,7 +224,7 @@ if __name__ == '__main__':
     # length of the window
     history_signal = 32
     # type of classifier
-    classifier = 'MLP'
+    classifier = 'TCN'
     # if you extract features for RF for example. Not tested
     perform_features_extraction = False
     CUDA_DEV = "0"
@@ -256,11 +305,8 @@ if __name__ == '__main__':
 
     # Step 1.6: Classifier Selection: set training parameters
     ####### CLASSIFIER PARAMETERS #######
-    if classifier == 'RandomForest':
-        # Step 1.6.1: Set training parameters for RamdomForest. Use RandomForest Libaray
-        pass
-    elif classifier == 'TCN':
-        # Step 1.6.2: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
+    if classifier == 'TCN':
+        # Step 1.6.1: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
         batch_size = 256
         lr = 0.001
@@ -279,7 +325,7 @@ if __name__ == '__main__':
         # We use the Adam optimizer, a method for Stochastic Optimization
         optimizer = optim.Adam(net.parameters(), lr=lr)
     elif classifier == 'LSTM':
-        # Step 1.6.3: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
+        # Step 1.6.2: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
         lr = 0.001
         batch_size = 256
         epochs = 300
@@ -324,7 +370,7 @@ if __name__ == '__main__':
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)
     # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
-    if classifier == 'RandomForest' and windowing == 1:
+    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM'] and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
