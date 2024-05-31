@@ -156,7 +156,7 @@ def factors(n):
         factors.append(n)
     return factors
 
-if __name__ == '__main__':
+def initialize_classification(*args):
     # ------------------ #
     # Feature Selection Subflowchart
     # Step 1: Define empty lists and dictionary
@@ -206,41 +206,46 @@ if __name__ == '__main__':
             'smart_199_raw'
         ]
     }
+    
+    # Define parameter names and create a dictionary of params
+    param_names = [
+        'model', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
+        'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
+        'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
+        'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique'
+    ]
 
+    # Assign values directly from the dictionary
+    (
+        model, years, windowing, min_days_HDD, days_considered_as_failure,
+        test_train_perc, oversample_undersample, balancing_normal_failed,
+        history_signal, classifier, perform_features_extraction, CUDA_DEV,
+        ranking, num_features, overlap, split_technique, interpolate_technique
+    ) = dict(zip(param_names, args)).values()
     # here you can select the model. This is the one tested.
-    model = 'ST3000DM001'
     # Correct years for the model
-    years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
     # many parameters that could be changed, both for unbalancing, for networks and for features.
-    windowing = 1
     # minimum number of days for a HDD to be filtered out
-    min_days_HDD = 115
     # Days considered as failure
-    days_considered_as_failure = 7
     # percentage of the test set
-    test_train_perc = 0.3
     # type of oversampling: 0 means undersample, 1 means oversample, 2 means no balancing technique applied
-    oversample_undersample = 1
-    # balancing factor (major/minor = balancing_normal_failed)
-    # The balance factor is used to balance the number of normal and failed samples in the dataset, default as 'auto'
-    balancing_normal_failed = 'auto'
+    # The balance factor (major/minor = balancing_normal_failed) is used to balance the number of normal and failed samples in the dataset, default as 'auto'
     # length of the window
-    history_signal = 32
     # type of classifier
-    classifier = 'TCN'
     # if you extract features for RF for example. Not tested
-    perform_features_extraction = False
-    CUDA_DEV = "0"
+    # cuda device
     # if automatically select best features
-    ranking = 'Ok'
     # number of SMART features to select
-    num_features = 18
     # overlap option of the window
-    overlap = 1
     # split technique for dataset partitioning
-    split_technique = 'random'
     # interpolation technique for the rows with missing dates
-    interpolate_technique = 'linear'
+
+    try:
+        # Try to convert to float
+        balancing_normal_failed = float(balancing_normal_failed)
+    except ValueError:
+        # If it fails, it's a string and we leave it as is
+        pass
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -403,3 +408,5 @@ if __name__ == '__main__':
             # FDR, FAR, F1, recall, precision are not calculated for RandomForest, it will report as 0.0
             metric=['RMSE', 'MAE']
         )
+
+    return 'Classification completed successfully'
