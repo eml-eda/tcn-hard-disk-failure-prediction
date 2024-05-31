@@ -1,9 +1,8 @@
 import torch.nn.functional as F
 from torch import nn
-from torch.autograd import Variable
 import torch
 import numpy as np
-from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, f1_score, recall_score, precision_score, accuracy_score, roc_auc_score, log_loss
 from sklearn.utils import shuffle
 import math
 from collections import deque
@@ -260,7 +259,7 @@ class TCN_Network(nn.Module):
 
         return x
 
-def report_metrics(Y_test_real, prediction, metric):
+def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     """
     Calculate and print various evaluation metrics based on the predicted and actual values.
     
@@ -268,6 +267,8 @@ def report_metrics(Y_test_real, prediction, metric):
     - Y_test_real (array-like): The actual values of the target variable.
     - prediction (array-like): The predicted values of the target variable.
     - metric (list): A list of metrics to calculate and print.
+    - writer (SummaryWriter): The TensorBoard writer.
+    - iteration (int): The current iteration.
 
     Returns:
     - float: The F1 score based on the predicted and actual values.
@@ -286,15 +287,18 @@ def report_metrics(Y_test_real, prediction, metric):
         'FAR': lambda: (fp / (tn + fp)) * 100 if (tn + fp) > 0 else 0,  # False Alarm Rate
         'F1': lambda: f1_score(Y_test_real, prediction), # F1 Score
         'recall': lambda: recall_score(Y_test_real, prediction), # Recall (sensitivity)
-        'precision': lambda: precision_score(Y_test_real, prediction) # Precision (positive predictive value)
+        'precision': lambda: precision_score(Y_test_real, prediction), # Precision (positive predictive value)
+        'ROC AUC': lambda: roc_auc_score(Y_test_real, prediction) # ROC AUC
     }
     for m in metric:
         if m in metrics:
-            print(f'SCORE {m}: %.3f' % metrics[m]())
+            score = metrics[m]()
+            print(f'SCORE {m}: %.3f' % score)
+            writer.add_scalar(f'SCORE {m}', score, iteration)
     return f1_score(Y_test_real, prediction)
 
 class LSTMTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, Xtrain_examples, Xtest_examples, lr):
+    def __init__(self, model, optimizer, epochs, batch_size, lr):
         """
         Initialize the LSTMModelTrainer with all necessary components.
 
@@ -303,16 +307,12 @@ class LSTMTrainer:
             optimizer (torch.optim.Optimizer): Optimizer used for training the model.
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
-            Xtrain_examples (int): Number of training examples.
-            Xtest_examples (int): Number of testing examples.
             lr (float): Learning rate for the optimizer.
         """
         self.model = model
         self.optimizer = optimizer
         self.epochs = epochs
         self.batch_size = batch_size
-        self.Xtrain_examples = Xtrain_examples
-        self.Xtest_examples = Xtest_examples
         self.lr = lr
         self.writer = SummaryWriter('runs/LSTM_Training_Graph')
 
@@ -344,15 +344,12 @@ class LSTMTrainer:
             dict: A dictionary containing the F1 scores for different metrics.
         """
         train_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
-        train_loss = 0  # Initialize the total training loss to 0
         self.model.train()  # Set the model to training mode
-        correct = 0  # Initialize the number of correct predictions to 0
         weights = [1.7, 0.3]  # Define class weights for the loss function, with the first class being the majority class and the second class being the minority class
         class_weights = torch.FloatTensor(weights).cuda()  # Convert class weights to a CUDA tensor
-        predictions = np.ndarray(Xtrain.shape[0])  # Store the model's predictions
-        ytrain = np.ndarray(Xtrain.shape[0])  # Store the true labels
+        predictions = np.zeros((Xtrain.shape[0], 2))  # Store the model's predictions
+        true_labels = np.zeros(Xtrain.shape[0])  # Store the true labels
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-        #criterion = torch.nn.CrossEntropyLoss()
 
         for batch_idx, data in enumerate(train_loader):
             sequences, labels = data  # Input sequences and their corresponding labels
@@ -364,18 +361,15 @@ class LSTMTrainer:
             loss = criterion(output, labels)  # Calculate loss between model output and true labels
             loss.backward()  # Backward pass to calculate gradients
             self.optimizer.step()  # Update model parameters
-            pred = output.data.max(1, keepdim=True)[1]  # Get the predicted labels
             # Store the predicted labels for this batch in the predictions array
-            predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = pred.cpu().numpy()[:, 0]
-            # Store the true labels for this batch in the ytrain array
-            ytrain[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = labels.cpu().numpy()
-            # Calculate the number of correct predictions
-            correct += pred.eq(labels.data.view_as(pred)).cpu().sum()
-            train_loss += loss.item()  # Add the loss for this batch to the total training loss
+            predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :] = output.cpu().detach().numpy()
+            # Store the true labels for this batch in the true_labels array
+            true_labels[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = labels.cpu().numpy()
+
             if batch_idx > 0 and batch_idx % 10 == 0:  # Every 10 iterations, print the average loss and accuracy for the last 10 batches
-                # Calculate average loss and accuracy for the last 10 batches
-                avg_loss = train_loss / (10 * batchsize)
-                avg_accuracy = float(correct) / ((batch_idx + 1) * batchsize)
+                # Calculate average loss for the last 10 batches
+                avg_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
+                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
 
                 # Log to TensorBoard
                 self.writer.add_scalar('Training Loss', avg_loss, epoch * len(train_loader) + batch_idx)
@@ -383,31 +377,31 @@ class LSTMTrainer:
 
                 print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
                     epoch, batch_idx * batchsize, Xtrain.shape[0], 
-                    (100. * batch_idx * batchsize) / self.Xtrain_examples,
+                    (100. * (batch_idx * batchsize) / Xtrain.shape[0]),
                     avg_loss, avg_accuracy), end="\r")
-                train_loss = 0
 
-        avg_train_loss = train_loss / len(train_loader.dataset)
-        avg_train_acc = correct / len(train_loader.dataset)
+        avg_train_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
+        avg_train_acc = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch * len(train_loader) + batch_idx)
-        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch * len(train_loader) + batch_idx)
+        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch)
+        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch)
 
-        print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)'.format(
-            epoch, avg_train_loss, correct, len(train_loader.dataset), 100. * avg_train_acc))
+        print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
+            epoch, avg_train_loss, int(avg_train_acc * len(train_loader.dataset)), len(train_loader.dataset), 100. * avg_train_acc))
 
-        ytrain = ytrain[:((batch_idx + 1) * batchsize)]
+        true_labels = true_labels[:((batch_idx + 1) * batchsize)]
         predictions = predictions[:((batch_idx + 1) * batchsize)]
-        return report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
 
-    def test(self, Xtest, ytest):
+    def test(self, Xtest, ytest, epoch):
         """
         Test the LSTM model on the test dataset.
 
         Args:
             Xtest (np.ndarray): The input test data.
             ytest (np.ndarray): The target test data.
+            epoch (int): The current epoch number.
 
         Returns:
             None
@@ -415,37 +409,36 @@ class LSTMTrainer:
         """
         test_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
         self.model.eval()
-        test_loss = 0
-        correct = 0
         criterion = torch.nn.CrossEntropyLoss()
+        test_preds = torch.as_tensor([]).cuda()
+        test_labels = torch.as_tensor([], dtype=torch.long).cuda()
+
         with torch.no_grad():
             test_preds = torch.as_tensor([])
             test_labels = torch.as_tensor([], dtype=torch.long)
-            for test_data in enumerate(test_loader):
+            for batch_idx, test_data in enumerate(test_loader):
                 sequences, labels = test_data
                 sequences = sequences.cuda()
                 labels = labels.cuda()
                 preds = self.model(sequences)
-                pred = preds.data.max(1, keepdim=True)[1]
                 loss = criterion(preds, labels)
-                test_loss += loss.item()
-                correct += pred.eq(labels.data.view_as(pred)).cpu().sum()
                 test_preds = torch.cat((test_preds, preds.cpu()))
                 test_labels = torch.cat((test_labels, labels.cpu()))
-                _, pred_labels = torch.max(test_preds, 1)
 
-        # Calculate the average loss over all of the batches
-        avg_test_loss = test_loss / Xtest.shape[0]
-        avg_test_acc = correct / Xtest.shape[0]
+        # Calculate metrics
+        test_preds_np = test_preds.cpu().numpy()
+        test_labels_np = test_labels.cpu().numpy()
+        avg_test_loss = log_loss(test_labels_np, test_preds_np, labels=[0, 1])
+        avg_test_acc = accuracy_score(test_labels_np, test_preds_np.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Test Loss', avg_test_loss, Xtest.shape[0])
-        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, Xtest.shape[0])
+        self.writer.add_scalar('Average Test Loss', avg_test_loss, epoch)
+        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, Xtest.shape[0], epoch)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_loss, correct, Xtest.shape[0],
-            100. * avg_test_acc))
-        report_metrics(test_labels, pred_labels, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
+            avg_test_loss, avg_test_acc))
+
+        report_metrics(test_labels_np, test_preds_np.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):
         """
@@ -467,7 +460,7 @@ class LSTMTrainer:
         # identical to net_train_validate but train and test are separated and train does not include test
         for epoch in range(1, self.epochs):
             F1 = self.train(Xtrain, ytrain, epoch)
-            self.test(Xtest, ytest)
+            self.test(Xtest, ytest, epoch)
             F1_list[i] = F1
             i += 1
             if i == 5:
@@ -524,21 +517,20 @@ class TCNTrainer:
             numpy.ndarray: The F1 scores calculated using the training data.
 
         """
-        train_loss = 0
         # Randomize the order of the elements in the training set to ensure that the training process is not influenced by the order of the data
         Xtrain, ytrain = shuffle(Xtrain, ytrain)
         self.model.train()
-        samples, features, dim_window = Xtrain.shape
-        nbatches = Xtrain.shape[0] // self.batch_size
-        correct = 0
+        samples = Xtrain.shape[0]
+        nbatches = samples // self.batch_size
+        predictions = np.zeros((Xtrain.shape[0], 2))  # Store the model's predictions
+        true_labels = np.zeros(Xtrain.shape[0])  # Store the true labels
         # we weights the different classes, the first class is the majority class, the second is the minority class
         weights = [1.7, 0.3]
         # we use the GPU to train
         class_weights = torch.FloatTensor(weights).cuda()
         # we use the CrossEntropyLoss as loss function
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-        predictions = np.ndarray(Xtrain.shape[0])
-        
+
         for batch_idx in np.arange(nbatches + 1):
             data = Xtrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]
             target = ytrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
@@ -550,8 +542,6 @@ class TCNTrainer:
                 # Convert the data and target to tensors
                 data, target = torch.Tensor(data), torch.Tensor(target)
 
-            # Wrap the data and target in a Variable to allow automatic differentiation  
-            data, target = Variable(data), Variable(target)
             # Zero the gradients since PyTorch accumulates gradients on subsequent backward passes
             self.optimizer.zero_grad()
             # Get the output predictions from the model
@@ -562,93 +552,87 @@ class TCNTrainer:
             loss.backward()
             # Update the model parameters using the gradients and the optimizer
             self.optimizer.step()
-            pred = output.data.max(1, keepdim=True)[1]
-            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
-            correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-            train_loss += loss
-            
-            if batch_idx > 0 and batch_idx % 10 == 0:
-                # Calculate the average loss and accuracy for the last 10 batches
-                avg_loss = train_loss / (10 * self.batch_size)
-                avg_accuracy = correct / (10 * self.batch_size)  # Correction to average accuracy over the last 10 batches
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().detach().numpy()
+            true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
 
-                # Log average loss and accuracy to TensorBoard
+            if batch_idx > 0 and batch_idx % 10 == 0:
+                # Calculate average loss and accuracy for the last 10 batches
+                avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
+                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
+
+                # Log to TensorBoard
                 self.writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
                 self.writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
 
                 # Print the training progress to the console
                 print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
-                    epoch,
-                    batch_idx * self.batch_size,
-                    samples,
+                    epoch, batch_idx * self.batch_size, samples,
                     (100. * batch_idx * self.batch_size) / samples,
-                    avg_loss,
-                    avg_accuracy), end="\r")
-                train_loss = 0
+                    avg_loss, avg_accuracy), end="\r")
 
-        # Calculate the average loss over all of the batches
-        avg_train_loss = train_loss / Xtrain.shape[0]
-        avg_train_acc = correct / Xtrain.shape[0]
+        # Calculate the average loss, accuracy, and ROC AUC over all of the batches
+        avg_train_loss = log_loss(true_labels, predictions, labels=[0, 1])
+        avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch * Xtrain.shape[0] + batch_idx)
-        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch * Xtrain.shape[0] + batch_idx)
+        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch)
+        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch)
 
         print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, correct, Xtrain.shape[0], 100. * avg_train_acc))
+            epoch, avg_train_loss, int(avg_train_acc * samples), samples, 100. * avg_train_acc))
 
-        return report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
 
-    def test(self, Xtest, ytest):
+    def test(self, Xtest, ytest, epoch):
         """
         Test the TCN model on the test dataset.
 
         Args:
             Xtest (np.ndarray): Input test data.
             ytest (np.ndarray): Target test data.
+            epoch (int): The current epoch number.
 
         Returns:
             np.ndarray: Predictions for the test set.
         """
         self.model.eval()  # Set the model to evaluation mode
-        test_loss = 0  # Initialize the total test loss to 0
-        correct = 0  # Initialize the number of correct predictions to 0
         nbatches = Xtest.shape[0] // self.batch_size  # Calculate the number of batches
-        predictions = np.ndarray(Xtest.shape[0])  # Initialize an array to store the model's predictions
+        predictions = np.zeros((Xtest.shape[0], 2))  # Initialize an array to store the model's predictions
+        true_labels = np.zeros(Xtest.shape[0])  # Initialize an array to store the true labels
         criterion = torch.nn.CrossEntropyLoss()  # Define the loss function
 
         # Disable gradient calculations (since we are in test mode)
         with torch.no_grad():
             for batch_idx in np.arange(nbatches + 1):
                 # Extract the data and target for this batch
-                data, target = Variable(torch.Tensor(Xtest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]),
-                                    volatile=True), Variable(torch.Tensor(ytest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]))
+                data = Xtest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]
+                target = ytest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
+                data, target = torch.Tensor(data), torch.Tensor(target)
+
                 # If CUDA is available, move the data and target to the GPU
                 if torch.cuda.is_available():
                     data, target = data.cuda(), target.cuda()
+
                 # Forward pass: compute predicted outputs by passing inputs to the model
                 output = self.model(data)
-                # Calculate the batch loss
-                test_loss = criterion(output, target.long()).item()
-                # Get the predicted class from the maximum class score
-                pred = output.data.max(1, keepdim=True)[1]
-                # Compare predictions to true label
-                correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-                # Store the predictions for this batch
-                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
 
-        # Calculate the average loss over all of the batches
-        avg_test_loss = test_loss / Xtest.shape[0]
-        avg_test_acc = correct / Xtest.shape[0]
+                # Store the predictions and true labels for this batch
+                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().numpy()
+                true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
+
+        # Calculate the average loss and accuracy over all of the batches
+        avg_test_loss = log_loss(true_labels, predictions, labels=[0, 1])
+        avg_test_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Test Loss', avg_test_loss, Xtest.shape[0] + batch_idx)
-        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, Xtest.shape[0] + batch_idx)
+        self.writer.add_scalar('Average Test Loss', avg_test_loss, epoch)
+        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, epoch)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            avg_test_loss, correct, Xtest.shape[0], 100. * avg_test_acc))
-        report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
-        return predictions
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
+            avg_test_loss, avg_test_acc))
+
+        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        #return predictions.argmax(axis=1)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):
         """
@@ -667,7 +651,7 @@ class TCNTrainer:
             # the train include also the test inside
             F1 = self.train(Xtrain, ytrain, epoch)
             # At each epoch, we test the network to print the accuracy
-            self.test(Xtest, ytest)
+            self.test(Xtest, ytest, epoch)
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:
@@ -723,16 +707,15 @@ class MLPTrainer:
         Returns:
             numpy.ndarray: The F1 scores calculated using the training data.
         """
-        train_loss = 0
         Xtrain, ytrain = shuffle(Xtrain, ytrain)
         self.model.train()
         samples = Xtrain.shape[0]
         nbatches = samples // self.batch_size
-        correct = 0
+        predictions = np.zeros((samples, 2))  # Store the model's predictions
+        true_labels = np.zeros(samples)  # Store the true labels
         weights = [1.7, 0.3]
         class_weights = torch.FloatTensor(weights).cuda()
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-        predictions = np.ndarray(samples)
 
         for batch_idx in np.arange(nbatches + 1):
             data = Xtrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
@@ -743,20 +726,17 @@ class MLPTrainer:
             else:
                 data, target = torch.Tensor(data), torch.Tensor(target)
 
-            data, target = Variable(data), Variable(target)
             self.optimizer.zero_grad()
             output = self.model(data)
             loss = criterion(output, target.long())
             loss.backward()
             self.optimizer.step()
-            pred = output.data.max(1, keepdim=True)[1]
-            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
-            correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-            train_loss += loss
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().detach().numpy()
+            true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
 
             if batch_idx > 0 and batch_idx % 10 == 0:
-                avg_loss = train_loss / (10 * self.batch_size)
-                avg_accuracy = correct / (10 * self.batch_size)
+                avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
+                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
                 self.writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
                 self.writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
                 print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
@@ -766,32 +746,31 @@ class MLPTrainer:
                     (100. * batch_idx * self.batch_size) / samples,
                     avg_loss,
                     avg_accuracy), end="\r")
-                train_loss = 0
 
-        avg_train_loss = train_loss / samples
-        avg_train_acc = correct / samples
-        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch * samples + batch_idx)
-        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch * samples + batch_idx)
+        avg_train_loss = log_loss(true_labels, predictions, labels=[0, 1])
+        avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
+        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch)
+        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch)
         print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, correct, samples, 100. * avg_train_acc))
-        return report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+            epoch, avg_train_loss, int(avg_train_acc * samples), samples, 100. * avg_train_acc))
+        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
 
-    def test(self, Xtest, ytest):
+    def test(self, Xtest, ytest, epoch):
         """
         Test the MLP model on the test dataset.
 
         Args:
             Xtest (np.ndarray): Input test data.
             ytest (np.ndarray): Target test data.
+            epoch (int): The current epoch number.
 
         Returns:
             np.ndarray: Predictions for the test set.
         """
         self.model.eval()
-        test_loss = 0
-        correct = 0
         nbatches = Xtest.shape[0] // self.batch_size
-        predictions = np.ndarray(Xtest.shape[0])
+        predictions = np.zeros((Xtest.shape[0], 2))  # Store the model's predictions
+        true_labels = np.zeros(Xtest.shape[0])  # Store the true labels
         criterion = torch.nn.CrossEntropyLoss()
 
         with torch.no_grad():
@@ -804,21 +783,23 @@ class MLPTrainer:
                 else:
                     data, target = torch.Tensor(data), torch.Tensor(target)
 
-                data, target = Variable(data), Variable(target)
                 output = self.model(data)
                 test_loss = criterion(output, target.long()).item()
-                pred = output.data.max(1, keepdim=True)[1]
-                correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
+                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().detach().numpy()
+                true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
 
-        avg_test_loss = test_loss / Xtest.shape[0]
-        avg_test_acc = correct / Xtest.shape[0]
-        self.writer.add_scalar('Average Test Loss', avg_test_loss, Xtest.shape[0] + batch_idx)
-        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, Xtest.shape[0] + batch_idx)
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            avg_test_loss, correct, Xtest.shape[0], 100. * avg_test_acc))
-        report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
-        return predictions
+        # Calculate the average loss and accuracy over all of the batches
+        avg_test_loss = log_loss(true_labels, predictions, labels=[0, 1])
+        avg_test_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
+
+        # Log to TensorBoard
+        self.writer.add_scalar('Average Test Loss', avg_test_loss, epoch)
+        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, epoch)
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
+            avg_test_loss, avg_test_acc))
+
+        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        #return predictions.argmax(axis=1)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):
         """
@@ -833,7 +814,7 @@ class MLPTrainer:
         F1_list = deque(maxlen=5)
         for epoch in range(1, self.epochs):
             F1 = self.train(Xtrain, ytrain, epoch)
-            self.test(Xtest, ytest)
+            self.test(Xtest, ytest, epoch)
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:

@@ -11,7 +11,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.utils import shuffle
 from Networks_pytorch import *
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 import torch.optim as optim
 from sklearn import svm
 from tqdm import tqdm
@@ -34,6 +34,7 @@ def train_and_evaluate_model(model, classifier_name, X_train, Y_train, X_test, Y
     Returns:
         None
     """
+    writer = SummaryWriter(f'runs/{classifier_name}_Training_Graph')
     X_train, Y_train = shuffle(X_train, Y_train)
 
     # Split the training data into 10 batches
@@ -48,8 +49,10 @@ def train_and_evaluate_model(model, classifier_name, X_train, Y_train, X_test, Y
     prediction = model.predict(X_test)
     Y_test_real = Y_test
     accuracy = accuracy_score(Y_test_real, prediction)
-    print(f'{classifier_name} Prediction Accuracy: {accuracy * 100:.4f}%')
-    report_metrics(Y_test_real, prediction, metric)
+    auc = roc_auc_score(Y_test_real, prediction)
+    print(f'{classifier_name} Prediction Accuracy: {accuracy * 100:.4f}%, AUC: {auc:.2f}')
+    report_metrics(Y_test_real, prediction, metric, writer, n_iterations)  # TODO:
+    writer.close()
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
