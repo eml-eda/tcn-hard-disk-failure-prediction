@@ -106,6 +106,46 @@ class FPLSTM(nn.Module):
         fc2_out = self.fc2(do2_out)
         return fc2_out
 
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim):
+        """
+        Initialize the MLP class.
+
+        Args:
+            input_dim (int): The input dimension of the MLP.
+            hidden_dim (int): The hidden dimension of the MLP.
+        """
+        super(MLP, self).__init__()
+        # The model layers include:
+        # - Linear1: A fully connected layer that maps the input to the hidden dimension.
+        # - ReLU: Applies the ReLU activation function to the output of the first fully connected layer.
+        # - Linear2: A fully connected layer that maps the hidden dimension to the output dimension.
+        # - ReLU: Applies the ReLU activation function to the output of the second fully connected layer.
+        # - Linear3: A fully connected layer that maps the output dimension to the number of classes.
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+
+        # Define the layers
+        self.lin1 = nn.Linear(self.input_dim, self.hidden_dim)
+        self.lin2 = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.lin3 = nn.Linear(self.hidden_dim, 2)
+
+    def forward(self, input):
+        """
+        Performs the forward pass of the network.
+
+        Args:
+            input (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The output tensor.
+        """
+        flattened_input = input.view(input.shape[0], -1).float()  # Ensure data is flattened
+        hidden_layer1_output = F.relu(self.lin1(flattened_input))
+        hidden_layer2_output = F.relu(self.lin2(hidden_layer1_output))
+        final_output = self.lin3(hidden_layer2_output)
+        return final_output
+
 ## this is the network used in the paper. It is a 1D conv with dilation
 class TCN_Network(nn.Module):
     
@@ -649,5 +689,168 @@ class TCNTrainer:
         now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
         # Save the model
         model_path = os.path.join(model_dir, f'tcn_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        torch.save(self.model.state_dict(), model_path)
+        print('Model saved as:', model_path)
+
+class MLPTrainer:
+    def __init__(self, model, optimizer, epochs, batch_size, lr):
+        """
+        Initialize the MLPTrainer with all necessary components for training and testing.
+
+        Args:
+            model (torch.nn.Module): The MLP model.
+            optimizer (torch.optim.Optimizer): Optimizer used for model training.
+            epochs (int): Number of training epochs.
+            batch_size (int): Batch size for training.
+            lr (float): Initial learning rate.
+        """
+        self.model = model
+        self.optimizer = optimizer
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.lr = lr
+        self.writer = SummaryWriter('runs/MLP_Training_Graph')
+
+    def train(self, Xtrain, ytrain, epoch):
+        """
+        Trains the MLP model using the given training data and parameters.
+
+        Args:
+            epoch (int): The current epoch number.
+            Xtrain (numpy.ndarray): The input training data.
+            ytrain (numpy.ndarray): The target training data.
+
+        Returns:
+            numpy.ndarray: The F1 scores calculated using the training data.
+        """
+        train_loss = 0
+        Xtrain, ytrain = shuffle(Xtrain, ytrain)
+        self.model.train()
+        samples = Xtrain.shape[0]
+        nbatches = samples // self.batch_size
+        correct = 0
+        weights = [1.7, 0.3]
+        class_weights = torch.FloatTensor(weights).cuda()
+        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        predictions = np.ndarray(samples)
+
+        for batch_idx in np.arange(nbatches + 1):
+            data = Xtrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
+            target = ytrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
+
+            if torch.cuda.is_available():
+                data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
+            else:
+                data, target = torch.Tensor(data), torch.Tensor(target)
+
+            data, target = Variable(data), Variable(target)
+            self.optimizer.zero_grad()
+            output = self.model(data)
+            loss = criterion(output, target.long())
+            loss.backward()
+            self.optimizer.step()
+            pred = output.data.max(1, keepdim=True)[1]
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
+            correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+            train_loss += loss
+
+            if batch_idx > 0 and batch_idx % 10 == 0:
+                avg_loss = train_loss / (10 * self.batch_size)
+                avg_accuracy = correct / (10 * self.batch_size)
+                self.writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
+                self.writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
+                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
+                    epoch,
+                    batch_idx * self.batch_size,
+                    samples,
+                    (100. * batch_idx * self.batch_size) / samples,
+                    avg_loss,
+                    avg_accuracy), end="\r")
+                train_loss = 0
+
+        avg_train_loss = train_loss / samples
+        avg_train_acc = correct / samples
+        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch * samples + batch_idx)
+        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch * samples + batch_idx)
+        print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
+            epoch, avg_train_loss, correct, samples, 100. * avg_train_acc))
+        return report_metrics(ytrain, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+
+    def test(self, Xtest, ytest):
+        """
+        Test the MLP model on the test dataset.
+
+        Args:
+            Xtest (np.ndarray): Input test data.
+            ytest (np.ndarray): Target test data.
+
+        Returns:
+            np.ndarray: Predictions for the test set.
+        """
+        self.model.eval()
+        test_loss = 0
+        correct = 0
+        nbatches = Xtest.shape[0] // self.batch_size
+        predictions = np.ndarray(Xtest.shape[0])
+        criterion = torch.nn.CrossEntropyLoss()
+
+        with torch.no_grad():
+            for batch_idx in np.arange(nbatches + 1):
+                data = Xtest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
+                target = ytest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
+
+                if torch.cuda.is_available():
+                    data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
+                else:
+                    data, target = torch.Tensor(data), torch.Tensor(target)
+
+                data, target = Variable(data), Variable(target)
+                output = self.model(data)
+                test_loss = criterion(output, target.long()).item()
+                pred = output.data.max(1, keepdim=True)[1]
+                correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = pred.cpu().numpy()[:, 0]
+
+        avg_test_loss = test_loss / Xtest.shape[0]
+        avg_test_acc = correct / Xtest.shape[0]
+        self.writer.add_scalar('Average Test Loss', avg_test_loss, Xtest.shape[0] + batch_idx)
+        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, Xtest.shape[0] + batch_idx)
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            avg_test_loss, correct, Xtest.shape[0], 100. * avg_test_acc))
+        report_metrics(ytest, predictions, ['FDR', 'FAR', 'F1', 'recall', 'precision'])
+        return predictions
+
+    def run(self, Xtrain, ytrain, Xtest, ytest):
+        """
+        Run the training and testing process for the model.
+
+        Args:
+            Xtrain (np.ndarray): The training input data.
+            ytrain (np.ndarray): The training target data.
+            Xtest (np.ndarray): The testing input data.
+            ytest (np.ndarray): The testing target data.
+        """
+        F1_list = deque(maxlen=5)
+        for epoch in range(1, self.epochs):
+            F1 = self.train(Xtrain, ytrain, epoch)
+            self.test(Xtest, ytest)
+            F1_list.append(F1)
+
+            if len(F1_list) == 5 and len(set(F1_list)) == 1:
+                print("Exited because last 5 epochs has constant F1")
+                break
+
+            if epoch % 20 == 0:
+                self.lr /= 10
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = self.lr
+        self.writer.close()
+        print('Training completed, saving the model...')
+
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_path = os.path.join(model_dir, f'mlp_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
         print('Model saved as:', model_path)

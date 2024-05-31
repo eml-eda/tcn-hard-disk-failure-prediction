@@ -64,6 +64,18 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         )
         # Run training and testing using the TCNTrainer
         lstm_trainer.run(X_train, Y_train, X_test, Y_test)
+    elif classifier == 'MLP':
+        # Step 1.7.4: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
+        # Initialize the MLPTrainer with the appropriate parameters
+        mlp_trainer = MLPTrainer(
+            model=net,                      # The MLP model
+            optimizer=optimizer,            # Optimizer for the model
+            epochs=epochs,                  # Total number of epochs
+            batch_size=batch_size,          # Batch size for training
+            lr=lr                           # Learning rate
+        )
+        # Run training and testing using the MLPTrainer
+        mlp_trainer.run(X_train, Y_train, X_test, Y_test)
 
 def factors(n):
     """
@@ -163,7 +175,7 @@ if __name__ == '__main__':
     # length of the window
     history_signal = 32
     # type of classifier
-    classifier = 'TCN'
+    classifier = 'MLP'
     # if you extract features for RF for example. Not tested
     perform_features_extraction = False
     CUDA_DEV = "0"
@@ -211,7 +223,7 @@ if __name__ == '__main__':
         print('Used features')
         for column in list(df):
             print('{:.<27}'.format(column,))
-        print('Saving to pickle file...')
+        print('Saving to pickle file:', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
 
         output_dir = os.path.join(script_dir, '..', 'output')
         # Create the directory if it doesn't exist
@@ -279,6 +291,24 @@ if __name__ == '__main__':
         fc1_hidden_s = 16
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
+        if torch.cuda.is_available():
+            print('Moving model to cuda')
+            net.cuda()
+        else:
+            print('Model to cpu')
+        # We use the Adam optimizer, a method for Stochastic Optimization
+        optimizer = optim.Adam(net.parameters(), lr=lr)
+    elif classifier == 'MLP':
+        # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
+        os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
+        batch_size = 256
+        lr = 0.001
+        epochs = 200
+        input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
+        hidden_dim = 128  # Example hidden dimension, can be adjusted
+
+        print(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
+        net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
         if torch.cuda.is_available():
             print('Moving model to cuda')
             net.cuda()
