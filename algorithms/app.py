@@ -15,7 +15,7 @@ if __name__ == '__main__':
             gr.Dropdown(choices=[0, 1, 2], value=0, label='Oversample Undersample', info='Select oversample/undersample technique.'),
             gr.Textbox(value='auto', label='Balancing Normal Failed', info='Balancing factor for normal and failed states, input auto for automatic.'),
             gr.Slider(minimum=1, maximum=100, step=1, value=32, label='History Signal', info='Length of the history signal.'),
-            gr.Dropdown(choices=['TCN', 'LSTM', 'MLP', 'RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'MLP_Manual', 'XGB', 'IsolationForest'], value='TCN', label='Classifier', info='Select the classifier type.'),
+            gr.Dropdown(choices=['TCN', 'LSTM', 'MLP', 'RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'MLP_Manual', 'XGB', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes'], value='TCN', label='Classifier', info='Select the classifier type.'),
             gr.Checkbox(value=False, label='Perform Features Extraction', info='Check to perform feature extraction.'),
             gr.Dropdown(choices=['0', '1', ''], value='0', label='CUDA DEV', info='Select CUDA device.'),
             gr.Dropdown(choices=['Ok', 'None'], value='Ok', label='Ranking', info='Select ranking method.'),
@@ -24,7 +24,6 @@ if __name__ == '__main__':
             gr.Dropdown(choices=['random', 'hdd', 'date'], value='random', label='Split Technique', info='Data split technique.'),
             gr.Dropdown(choices=['linear', 'time', 'None'], value='linear', label='Interpolate Technique', info='Interpolation technique.'),
             gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Optimal parameters search technique.')
-            #search_method
         ],
         outputs=gr.Textbox(),
         title="Prognostika - Hard Disk Failure Prediction Model Traing Dashboard",  # Title of the interface

@@ -5,7 +5,7 @@ from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
-from sklearn.ensemble import RandomForestClassifier, IsolationForest
+from sklearn.ensemble import RandomForestClassifier, IsolationForest, ExtraTreesClassifier, GradientBoostingClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
@@ -19,7 +19,8 @@ from xgboost import XGBClassifier
 from sklearn.neural_network import MLPClassifier
 from datetime import datetime
 from joblib import dump
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score, StratifiedKFold
+from sklearn.naive_bayes import GaussianNB
 import json
 
 def save_best_params_to_json(best_params, classifier_name):
@@ -112,6 +113,15 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     # Fit the search method
     search.fit(X_train, Y_train)
 
+    # Define StratifiedKFold cross-validator
+    stratified_kfold = StratifiedKFold(n_splits=5)
+
+    # Calculate cross validation score
+    cv_scores = cross_val_score(search.best_estimator_, X_train, Y_train, cv=stratified_kfold)
+
+    print(f"Cross validation scores: {cv_scores}")
+    print(f"Mean cross validation score: {cv_scores.mean()}")
+
     # Get the best parameters
     best_params = search.best_params_
     print(f"Best parameters: {best_params}")
@@ -145,7 +155,7 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
     # Format as string
-    now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Save the model
     model_path = os.path.join(model_dir, f'{classifier_name}_iterations_{n_iterations}_{now_str}.joblib')
     dump(best_model, model_path)
@@ -338,6 +348,65 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             param_grid = {}
 
         train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+    elif classifier == 'ExtraTrees':
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = ExtraTreesClassifier()
+
+        param_grid = {
+            'n_estimators': [100, 200, 300, 400, 500],
+            'max_features': ['auto', 'sqrt', 'log2'],
+            'bootstrap': [True, False]
+        }
+
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+
+    elif classifier == 'GradientBoosting':
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = GradientBoostingClassifier()
+
+        param_grid = {
+            'n_estimators': [100, 200, 300, 400, 500],
+            'learning_rate': [0.1, 0.05, 0.01],
+            'max_depth': [3, 4, 5, 6, 7],
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 2, 5, 10]
+        }
+
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+    elif classifier == 'NaiveBayes':
+        # Step 1.7.6: Perform Classification using Naive Bayes.
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = GaussianNB()
+
+        # Define the parameter grid
+        # Naive Bayes does not have any hyperparameters that need to be tuned
+        param_grid = {}
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+
+        train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
@@ -640,7 +709,7 @@ def initialize_classification(*args):
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)
     # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
-    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP'] and windowing == 1:
+    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes'] and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 

@@ -479,7 +479,7 @@ class LSTMTrainer:
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         # Format as string
-        now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
+        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Save the model
         model_path = os.path.join(model_dir, f'lstm_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
@@ -670,7 +670,7 @@ class TCNTrainer:
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         # Format as string
-        now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
+        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Save the model
         model_path = os.path.join(model_dir, f'tcn_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
