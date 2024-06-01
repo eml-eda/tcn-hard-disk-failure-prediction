@@ -5,30 +5,87 @@ from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, IsolationForest
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.utils import shuffle
 from Networks_pytorch import *
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import accuracy_score, roc_auc_score, make_scorer
 import torch.optim as optim
 from sklearn import svm
 from tqdm import tqdm
+from xgboost import XGBClassifier
+from sklearn.neural_network import MLPClassifier
+from datetime import datetime
+from joblib import dump
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+import json
 
+def save_best_params_to_json(best_params, classifier_name):
+    """
+    Saves the best parameters to a JSON file.
 
-def train_and_evaluate_model(model, classifier_name, X_train, Y_train, X_test, Y_test, metric, n_iterations=100):
+    Args:
+        best_params (dict): The best parameters.
+        classifier_name (str): The name of the classifier.
+
+    Returns:
+        None
+    """
+    # Define the directory path
+    param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'param')
+    # Create the directory if it doesn't exist
+    if not os.path.exists(param_dir):
+        os.makedirs(param_dir)
+
+    # Define the file path
+    file_path = os.path.join(param_dir, f'{classifier_name}_best_params.json')
+
+    # Save the best parameters to a JSON file
+    with open(file_path, 'w') as f:
+        json.dump(best_params, f)
+
+    print(f'Best parameters saved to: {file_path}')
+
+def load_best_params_from_json(classifier_name):
+    """
+    Loads the best parameters from a JSON file.
+
+    Args:
+        classifier_name (str): The name of the classifier.
+
+    Returns:
+        dict: The best parameters.
+    """
+    # Define the directory path
+    param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'param')
+
+    # Define the file path
+    file_path = os.path.join(param_dir, f'{classifier_name}_best_params.json')
+
+    # Load the best parameters from a JSON file
+    with open(file_path, 'r') as f:
+        best_params = json.load(f)
+
+    print(f'Best parameters loaded from: {file_path}')
+
+    return best_params
+
+def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_train, X_test, Y_test, metric, search_method='randomized', n_iterations=100):
     """
     Trains and evaluates a machine learning model.
 
     Args:
         model (object): The machine learning model to be trained and evaluated.
+        param_grid (dict): The parameter grid to search over.
         classifier_name (str): The name of the classifier.
         X_train (array-like): The training data features.
         Y_train (array-like): The training data labels.
         X_test (array-like): The test data features.
         Y_test (array-like): The test data labels.
         metric (str): The metric to be used for evaluation.
+        search_method (str, optional): The search method to use. Defaults to 'randomized'.
         n_iterations (int, optional): The number of iterations for training. Defaults to 100.
 
     Returns:
@@ -37,22 +94,62 @@ def train_and_evaluate_model(model, classifier_name, X_train, Y_train, X_test, Y
     writer = SummaryWriter(f'runs/{classifier_name}_Training_Graph')
     X_train, Y_train = shuffle(X_train, Y_train)
 
-    # Split the training data into 10 batches
+    # Define scoring metrics
+    scoring = {'accuracy': make_scorer(accuracy_score), 'f1': make_scorer(f1_score)}
+
+    # Choose the search method
+    search_method = 'randomized'  # 'grid' for GridSearchCV, 'randomized' for RandomizedSearchCV
+
+    if search_method == 'grid':
+        # Initialize GridSearchCV
+        search = GridSearchCV(estimator=model, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2, scoring=scoring, refit='f1')
+    elif search_method == 'randomized':
+        # Initialize RandomizedSearchCV
+        search = RandomizedSearchCV(estimator=model, param_distributions=param_grid, cv=3, n_jobs=-1, verbose=2, scoring=scoring, refit='f1', n_iter=100)
+    else:
+        raise ValueError(f'Invalid search method: {search_method}')
+
+    # Fit the search method
+    search.fit(X_train, Y_train)
+
+    # Get the best parameters
+    best_params = search.best_params_
+    print(f"Best parameters: {best_params}")
+
+    # Save the best parameters to a JSON file
+    save_best_params_to_json(best_params, classifier_name)
+
+    # Get the best estimator
+    best_model = search.best_estimator_
+
+    # Split the training data into multiple batches
     batch_size = len(X_train) // n_iterations
     pbar = tqdm(total=n_iterations)  # Initialize tqdm with the total number of batches
 
     for i in range(0, len(X_train), batch_size):
-        model.fit(X_train[i:i+batch_size, :], Y_train[i:i+batch_size])
+        best_model.fit(X_train[i:i+batch_size, :], Y_train[i:i+batch_size])
         pbar.update(1)  # Update the progress bar
 
     pbar.close()
-    prediction = model.predict(X_test)
+    prediction = best_model.predict(X_test)
     Y_test_real = Y_test
     accuracy = accuracy_score(Y_test_real, prediction)
     auc = roc_auc_score(Y_test_real, prediction)
     print(f'{classifier_name} Prediction Accuracy: {accuracy * 100:.4f}%, AUC: {auc:.2f}')
     report_metrics(Y_test_real, prediction, metric, writer, n_iterations)  # TODO:
     writer.close()
+
+    # Save the trained model to a file
+    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+    # Create the directory if it doesn't exist
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    # Format as string
+    now_str = datetime.now.strftime("%Y%m%d_%H%M%S")
+    # Save the model
+    model_path = os.path.join(model_dir, f'{classifier_name}_iterations_{n_iterations}_{now_str}.joblib')
+    dump(best_model, model_path)
+    print('Model saved as:', model_path)
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -75,24 +172,172 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     n_iterations = 100
     if classifier == 'RandomForest':
         # Step 1.7.1: Perform Classification using RandomForest.
-        model = RandomForestClassifier(n_estimators=n_iterations, min_samples_split=10, random_state=3, warm_start=True)
-        train_and_evaluate_model(model, 'RandomForest', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = RandomForestClassifier(random_state=3, warm_start=True)
+
+        # Define the parameter grid
+        param_grid = {
+            'n_estimators': [1000, 2000, 3000],
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 2, 4],
+            'max_features': ['auto', 'sqrt'],
+            'max_depth': [10, 20, 30, 40, None],
+            'criterion': ['gini', 'entropy'],
+            'bootstrap': [True, False]
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
     elif classifier == 'KNeighbors':
         # Step 1.7.2: Perform Classification using KNeighbors.
-        model = KNeighborsClassifier(n_neighbors=5)
-        train_and_evaluate_model(model, 'KNeighbors', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = KNeighborsClassifier()
+
+        # Define the parameter grid
+        param_grid = {
+            'n_neighbors': list(range(1, 31)),
+            'weights': ['uniform', 'distance'],
+            'metric': ['euclidean', 'manhattan', 'minkowski']
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
     elif classifier == 'DecisionTree':
         # Step 1.7.3: Perform Classification using DecisionTree.
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
         model = DecisionTreeClassifier()
-        train_and_evaluate_model(model, 'DecisionTree', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+
+        # Define the parameter grid
+        param_grid = {
+            'criterion': ['gini', 'entropy'],
+            'max_depth': list(range(1, 31)),
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 2, 4],
+            'max_features': ['auto', 'sqrt', 'log2', None]
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
     elif classifier == 'LogisticRegression':
         # Step 1.7.4: Perform Classification using LogisticRegression.
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
         model = LogisticRegression()
-        train_and_evaluate_model(model, 'LogisticRegression', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+
+        # Define the parameter grid
+        param_grid = {
+            'penalty': ['l1', 'l2', 'elasticnet', 'none'],
+            'C': np.logspace(-4, 4, 20),
+            'solver': ['lbfgs', 'newton-cg', 'liblinear', 'sag', 'saga'],
+            'max_iter': [100, 1000, 2500, 5000]
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
     elif classifier == 'SVM':
         # Step 1.7.5: Perform Classification using SVM.
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
         model = svm.SVC()
-        train_and_evaluate_model(model, 'SVM', X_train, Y_train, X_test, Y_test, metric, n_iterations)
+
+        # Define the parameter grid
+        param_grid = {
+            'C': [0.1, 1, 10, 100, 1000],  
+            'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
+            'kernel': ['linear', 'poly', 'rbf', 'sigmoid']
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+    elif classifier == 'XGB':
+        # Step 1.7.7: Perform Classification using XGBoost.
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = XGBClassifier()
+
+        # Define the parameter grid
+        param_grid = {
+            'learning_rate': [0.01, 0.1, 0.2, 0.3],
+            'n_estimators': [100, 500, 1000, 1500],
+            'max_depth': [3, 5, 7, 9],
+            'min_child_weight': [1, 3, 5],
+            'gamma': [0.1, 0.2, 0.3, 0.4],
+            'subsample': [0.6, 0.8, 1.0],
+            'colsample_bytree': [0.6, 0.8, 1.0],
+            'objective': ['binary:logistic']
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+    elif classifier == 'IsolationForest':
+        # Step 1.7.9: Perform Classification using IsolationForest.
+        try:
+            best_params = load_best_params_from_json(classifier)
+        except FileNotFoundError:
+            best_params = None
+
+        model = IsolationForest()
+
+        # Define the parameter grid
+        param_grid = {
+            'n_estimators': [100, 200, 300, 400, 500],
+            'max_samples': ['auto', 100, 200, 300, 400, 500],
+            'contamination': ['auto', 0.1, 0.2, 0.3, 0.4, 0.5],
+            'max_features': [1, 2, 3, 4, 5],
+            'bootstrap': [True, False]
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
@@ -116,7 +361,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         )
         # Run training and testing using the TCNTrainer
         lstm_trainer.run(X_train, Y_train, X_test, Y_test)
-    elif classifier == 'MLP':
+    elif classifier == 'MLP_Manual':
         # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
         # Initialize the MLPTrainer with the appropriate parameters
         mlp_trainer = MLPTrainer(
@@ -128,6 +373,21 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         )
         # Run training and testing using the MLPTrainer
         mlp_trainer.run(X_train, Y_train, X_test, Y_test)
+    elif classifier == 'MLP':
+        # Step 1.7.8: Perform Classification using MLP.
+        model = MLPClassifier()
+        
+        # Define the parameter grid
+        param_grid = {
+            'hidden_layer_sizes': [(50,50,50), (50,100,50), (100,)],
+            'activation': ['tanh', 'relu'],
+            'solver': ['sgd', 'adam'],
+            'alpha': [0.0001, 0.05],
+            'learning_rate': ['constant','adaptive'],
+            'max_iter': [200, 500, 1000]
+        }
+
+        train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
 
 def factors(n):
     """
@@ -212,7 +472,8 @@ def initialize_classification(*args):
         'model', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
-        'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique'
+        'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
+        'search_method'
     ]
 
     # Assign values directly from the dictionary
@@ -220,7 +481,8 @@ def initialize_classification(*args):
         model, years, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, perform_features_extraction, CUDA_DEV,
-        ranking, num_features, overlap, split_technique, interpolate_technique
+        ranking, num_features, overlap, split_technique, interpolate_technique,
+        search_method
     ) = dict(zip(param_names, args)).values()
     # here you can select the model. This is the one tested.
     # Correct years for the model
@@ -352,7 +614,7 @@ def initialize_classification(*args):
             print('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
         optimizer = optim.Adam(net.parameters(), lr=lr)
-    elif classifier == 'MLP':
+    elif classifier == 'MLP_Manual':
         # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
         batch_size = 256
@@ -378,7 +640,7 @@ def initialize_classification(*args):
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)
     # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
-    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM'] and windowing == 1:
+    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP'] and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
@@ -406,7 +668,8 @@ def initialize_classification(*args):
             Y_test=ytest,
             classifier=classifier,
             # FDR, FAR, F1, recall, precision are not calculated for RandomForest, it will report as 0.0
-            metric=['RMSE', 'MAE']
+            metric=['RMSE', 'MAE'],
+            search_method=search_method,
         )
 
     return 'Classification completed successfully'

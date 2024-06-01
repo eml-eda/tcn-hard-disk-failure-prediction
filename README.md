@@ -120,7 +120,7 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
 4. Run the classification script:
 
    ```bash
-   python .\algorithms\Classification.py
+   python .\algorithms\app.py
    ```
 
    The script will preprocess the dataset and save the preprocessed dataset in the `HDD_dataset` directory, then it will train and test the classification models on the dataset.

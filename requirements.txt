@@ -10,3 +10,4 @@ wget==3.2
 tensorboard==2.16.2
 tqdm==4.66.4
 gradio==4.32.1
+xgboost
