@@ -760,16 +760,18 @@ class DatasetPartitioner:
         - ytrain (Series): The training labels.
         - ytest (Series): The test labels.
         """
-        df = self.preprocess_random(df)
+        df = self.preprocess_dataset(df)
         if self.technique == 'random':
             y = df['predict_val']   # y represents the prediction value (Series)
             df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
             X = df.values   # X represents the smart features (ndarray)
 
             if self.windowing == 1:
-                # Currently we can only choose overlap == 1 since other options will cause the windows dimension to change, inconsistent with the dim of the network
+                # If we use the down sampling, then the data_dim will be the sum of the factors of the window_dim
                 data_dim = sum(number - 1 for number in self.factors(self.window_dim)) + 1 if self.overlap != 1 else self.window_dim
                 X = self.arrays_to_matrix(X, data_dim)
+            else:
+                X = np.expand_dims(X, axis=1)  # Add an extra dimension
             print('Augmented data of predict_val is: ', Counter(y))
             # Print the shapes of the train and test sets
             # Xtrain: ndarray, Xtest: ndarray, ytrain: Series, ytest: Series
@@ -843,9 +845,9 @@ class DatasetPartitioner:
         X_new = X.reshape(X.shape[0], int(X.shape[1] / wind_dim), wind_dim)
         return X_new
 
-    def preprocess_random(self, df):
+    def preprocess_dataset(self, df):
         """
-        Preprocess the dataset for random splitting.
+        Preprocess the dataset for splitting.
 
         --- Step 4.1.1: Apply sampling technique.
 
@@ -856,6 +858,7 @@ class DatasetPartitioner:
         - DataFrame: The preprocessed dataframe.
         """
         if self.windowing != 1:
+            df.drop(columns=['model', 'capacity_bytes'], inplace=True)
             return df
          
         # Replace the 'predict_val' column with a new column 'predict_val' that contains the maximum value of the 'predict_val' columns
@@ -946,7 +949,7 @@ class DatasetPartitioner:
 
         if self.oversample_undersample != 2:
             resampler = RandomUnderSampler(sampling_strategy=self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=self.resampler_balancing, random_state=42)
-            Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler) if self.windowing else resampler.fit_resample(Xtrain, ytrain)
+            Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler)
         else:
             ytrain = ytrain.astype(int)
             ytest = ytest.astype(int)

@@ -651,9 +651,12 @@ def initialize_classification(*args):
         lr = 0.001
         epochs = 200
         num_inputs = Xtrain.shape[1]
-        # Calculate the data dimension based on the history signal and overlap. 
-        # If overlap == 1, the overlap option is chosed as complete overlap. If overlap == 2, the overlap option is chosed as dynamic overlap based on the factors of window_dim
-        data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
+        # Calculate the data dimension based on the history signal and overlap.
+        if windowing == 1:
+            # If overlap == 1, the overlap option is chosed as complete overlap. If overlap == 2, the overlap option is chosed as dynamic overlap based on the factors of window_dim
+            data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
+        else:
+            data_dim = 1
         print(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
         net = TCN_Network(data_dim, num_inputs)
         if torch.cuda.is_available():
