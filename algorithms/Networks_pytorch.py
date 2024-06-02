@@ -298,7 +298,7 @@ def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     return f1_score(Y_test_real, prediction)
 
 class LSTMTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):
         """
         Initialize the LSTMModelTrainer with all necessary components.
 
@@ -314,6 +314,7 @@ class LSTMTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
+        self.id_number = id_number
         self.writer = SummaryWriter('runs/LSTM_Training_Graph')
 
     def FPLSTM_collate(self, batch):
@@ -474,19 +475,19 @@ class LSTMTrainer:
         self.writer.close()
         print('Training completed, saving the model...')
 
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         # Create the directory if it doesn't exist
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         # Format as string
         now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Save the model
-        model_path = os.path.join(model_dir, f'lstm_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        model_path = os.path.join(model_dir, f'lstm_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
         print('Model saved as:', model_path)
 
 class TCNTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):
         """
         Initialize the TCNTrainer with all necessary components for training and testing.
 
@@ -496,12 +497,14 @@ class TCNTrainer:
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Initial learning rate.
+            id_number (int): The ID number of the model.
         """
         self.model = model
         self.optimizer = optimizer
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
+        self.id_number = id_number
         self.writer = SummaryWriter('runs/TCN_Training_Graph')
 
     def train(self, Xtrain, ytrain, epoch):
@@ -665,19 +668,19 @@ class TCNTrainer:
         self.writer.close()
         print('Training completed, saving the model...')
 
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         # Create the directory if it doesn't exist
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         # Format as string
         now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Save the model
-        model_path = os.path.join(model_dir, f'tcn_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        model_path = os.path.join(model_dir, f'tcn_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
         print('Model saved as:', model_path)
 
 class MLPTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):
         """
         Initialize the MLPTrainer with all necessary components for training and testing.
 
@@ -687,12 +690,14 @@ class MLPTrainer:
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Initial learning rate.
+            id_number (int): The ID number of the model.
         """
         self.model = model
         self.optimizer = optimizer
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
+        self.id_number = id_number
         self.writer = SummaryWriter('runs/MLP_Training_Graph')
 
     def train(self, Xtrain, ytrain, epoch):
@@ -828,10 +833,10 @@ class MLPTrainer:
         self.writer.close()
         print('Training completed, saving the model...')
 
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_path = os.path.join(model_dir, f'mlp_training_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        model_path = os.path.join(model_dir, f'mlp_manual_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
         print('Model saved as:', model_path)

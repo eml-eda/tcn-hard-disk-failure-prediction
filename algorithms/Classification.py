@@ -23,25 +23,27 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_
 from sklearn.naive_bayes import GaussianNB
 import json
 
-def save_best_params_to_json(best_params, classifier_name):
+
+def save_best_params_to_json(best_params, classifier_name, id_number):
     """
     Saves the best parameters to a JSON file.
 
     Args:
         best_params (dict): The best parameters.
         classifier_name (str): The name of the classifier.
+        id_number (str): The ID number for the model.
 
     Returns:
         None
     """
     # Define the directory path
-    param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'param')
+    param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
     # Create the directory if it doesn't exist
     if not os.path.exists(param_dir):
         os.makedirs(param_dir)
 
     # Define the file path
-    file_path = os.path.join(param_dir, f'{classifier_name}_best_params.json')
+    file_path = os.path.join(param_dir, f'{classifier_name}_{id_number}_best_params.json')
 
     # Save the best parameters to a JSON file
     with open(file_path, 'w') as f:
@@ -49,21 +51,22 @@ def save_best_params_to_json(best_params, classifier_name):
 
     print(f'Best parameters saved to: {file_path}')
 
-def load_best_params_from_json(classifier_name):
+def load_best_params_from_json(classifier_name, id_number):
     """
     Loads the best parameters from a JSON file.
 
     Args:
         classifier_name (str): The name of the classifier.
+        id_number (str): The ID number for the model.
 
     Returns:
         dict: The best parameters.
     """
     # Define the directory path
-    param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'param')
+    param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
 
     # Define the file path
-    file_path = os.path.join(param_dir, f'{classifier_name}_best_params.json')
+    file_path = os.path.join(param_dir, f'{classifier_name}_{id_number}_best_params.json')
 
     # Load the best parameters from a JSON file
     with open(file_path, 'r') as f:
@@ -73,7 +76,7 @@ def load_best_params_from_json(classifier_name):
 
     return best_params
 
-def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_train, X_test, Y_test, metric, search_method='randomized', n_iterations=100):
+def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_train, X_test, Y_test, id_number, metric, search_method='randomized', n_iterations=100):
     """
     Trains and evaluates a machine learning model.
 
@@ -85,6 +88,7 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
         Y_train (array-like): The training data labels.
         X_test (array-like): The test data features.
         Y_test (array-like): The test data labels.
+        id_number (str): The ID number for the model.
         metric (str): The metric to be used for evaluation.
         search_method (str, optional): The search method to use. Defaults to 'randomized'.
         n_iterations (int, optional): The number of iterations for training. Defaults to 100.
@@ -127,7 +131,7 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     print(f"Best parameters: {best_params}")
 
     # Save the best parameters to a JSON file
-    save_best_params_to_json(best_params, classifier_name)
+    save_best_params_to_json(best_params, classifier_name, id_number)
 
     # Get the best estimator
     best_model = search.best_estimator_
@@ -150,14 +154,14 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     writer.close()
 
     # Save the trained model to a file
-    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model')
+    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
     # Create the directory if it doesn't exist
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
     # Format as string
     now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Save the model
-    model_path = os.path.join(model_dir, f'{classifier_name}_iterations_{n_iterations}_{now_str}.joblib')
+    model_path = os.path.join(model_dir, f'{classifier_name}_{id_number}_iterations_{n_iterations}_{now_str}.joblib')
     dump(best_model, model_path)
     print('Model saved as:', model_path)
 
@@ -183,7 +187,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     if classifier == 'RandomForest':
         # Step 1.7.1: Perform Classification using RandomForest.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -205,11 +209,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'KNeighbors':
         # Step 1.7.2: Perform Classification using KNeighbors.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -227,11 +231,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'DecisionTree':
         # Step 1.7.3: Perform Classification using DecisionTree.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -251,11 +255,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'LogisticRegression':
         # Step 1.7.4: Perform Classification using LogisticRegression.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -274,11 +278,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'SVM':
         # Step 1.7.5: Perform Classification using SVM.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -296,11 +300,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'XGB':
         # Step 1.7.7: Perform Classification using XGBoost.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -323,11 +327,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'IsolationForest':
         # Step 1.7.9: Perform Classification using IsolationForest.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -347,10 +351,10 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'ExtraTrees':
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -366,11 +370,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
 
     elif classifier == 'GradientBoosting':
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -388,11 +392,11 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'NaiveBayes':
         # Step 1.7.6: Perform Classification using Naive Bayes.
         try:
-            best_params = load_best_params_from_json(classifier)
+            best_params = load_best_params_from_json(classifier, args['id_number'])
         except FileNotFoundError:
             best_params = None
 
@@ -406,7 +410,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         if best_params:
             model.set_params(**best_params)
 
-        train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
@@ -415,7 +419,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             optimizer=args['optimizer'],            # Optimizer for the model
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr']                           # Learning rate
+            lr=args['lr'],                          # Learning rate
+            id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
         tcn_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -426,7 +431,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             optimizer=args['optimizer'],            # Optimizer for the model
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr']                           # Learning rate
+            lr=args['lr'],                          # Learning rate
+            id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
         lstm_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -438,7 +444,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             optimizer=args['optimizer'],            # Optimizer for the model
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr']                           # Learning rate
+            lr=args['lr'],                          # Learning rate
+            id_number=args['id_number']
         )
         # Run training and testing using the MLPTrainer
         mlp_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -456,7 +463,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'max_iter': [200, 500, 1000]
         }
 
-        train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, metric, args['search_method'], n_iterations)
+        train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
 
 def factors(n):
     """
@@ -484,6 +491,45 @@ def factors(n):
     if n > 1:
         factors.append(n)
     return factors
+
+def save_params_to_json(df, *args):
+
+    # Define parameter names and create a dictionary of params
+    param_names = [
+        'model', 'id_number', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
+        'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
+        'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
+        'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
+        'search_method'
+    ]
+
+    # Assign values directly from the dictionary
+    params = dict(zip(param_names, args))
+
+    # Get column names that start with 'smart_'
+    smart_columns = [col for col in df.columns if col.startswith('smart_')]
+
+    # Add smart_columns to params under the key 'smart_attributes'
+    params['smart_attributes'] = smart_columns
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    param_dir = os.path.join(script_dir, '..', 'model', params['id_number'])
+
+    # Create the directory if it doesn't exist
+    if not os.path.exists(param_dir):
+        os.makedirs(param_dir)
+
+    print('User parameters:', params)
+
+    # Define the file path
+    file_path = os.path.join(param_dir, f'{params['classifier'].lower()}_{params['id_number']}_params_{now_str}.json')
+
+    # Write the params dictionary to a JSON file
+    with open(file_path, 'w') as f:
+        json.dump(params, f)
+
+    print(f'Parameters saved to: {file_path}')
 
 def initialize_classification(*args):
     # ------------------ #
@@ -538,7 +584,7 @@ def initialize_classification(*args):
     
     # Define parameter names and create a dictionary of params
     param_names = [
-        'model', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
+        'model', 'id_number', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
@@ -547,7 +593,7 @@ def initialize_classification(*args):
 
     # Assign values directly from the dictionary
     (
-        model, years, windowing, min_days_HDD, days_considered_as_failure,
+        model, id_number, years, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, perform_features_extraction, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
@@ -577,6 +623,8 @@ def initialize_classification(*args):
     except ValueError:
         # If it fails, it's a string and we leave it as is
         pass
+
+    print('Current id number:', id_number)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -622,6 +670,16 @@ def initialize_classification(*args):
     # Interpolate data for the rows with missing dates
     if interpolate_technique != 'None':
         df = interpolate_ts(df, method=interpolate_technique)
+
+    # Saving parameters to json file
+    print('Saving parameters to json file...')
+    save_params_to_json(
+        df, model, id_number, years, windowing, min_days_HDD, days_considered_as_failure,
+        test_train_perc, oversample_undersample, balancing_normal_failed,
+        history_signal, classifier, perform_features_extraction, CUDA_DEV,
+        ranking, num_features, overlap, split_technique, interpolate_technique,
+        search_method
+    )
 
     ## -------- ##
     # random: stratified without keeping time order
@@ -729,7 +787,8 @@ def initialize_classification(*args):
             optimizer=optimizer,
             epochs=epochs,
             batch_size=batch_size,
-            lr=lr
+            lr=lr,
+            id_number=id_number
         )
     except:
         # Parameters for RandomForest
@@ -742,6 +801,7 @@ def initialize_classification(*args):
             # FDR, FAR, F1, recall, precision are not calculated for RandomForest, it will report as 0.0
             metric=['RMSE', 'MAE'],
             search_method=search_method,
+            id_number=id_number
         )
 
     return 'Classification completed successfully'

@@ -7,6 +7,7 @@ if __name__ == '__main__':
         fn=initialize_classification,
         inputs=[
             gr.Textbox(value='ST3000DM001', label='Model', info='Enter the model type(s). For multiple models, separate them with commas.'),
+            gr.Textbox(value='01234567', label='ID Number', info='Enter the ID number(s).'),
             gr.CheckboxGroup(choices=['2013', '2014', '2015', '2016', '2017', '2018', '2019'], value=['2013'], label='Years', info='Select the years to consider.'),
             gr.Dropdown(choices=[0, 1], value=1, label='Windowing', info='Select windowing technique.'),
             gr.Slider(minimum=1, maximum=365, step=1, value=115, label='Min Days HDD', info='Minimum number of days for HDD.'),
@@ -26,7 +27,7 @@ if __name__ == '__main__':
             gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Optimal parameters search technique.')
         ],
         outputs=gr.Textbox(),
-        title="Prognostika - Hard Disk Failure Prediction Model Traing Dashboard",  # Title of the interface
+        title="Prognostika - Hard Disk Failure Prediction Model Training Dashboard",  # Title of the interface
         description="Predicting System Failures using Machine Learning Techniques",  # Description of the interface
     )
 

@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
-        "./algorithms"
+        "./algorithms",
+        "./inference"
     ]
 }
