@@ -9,6 +9,7 @@ from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import os
+import logger
 
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
@@ -452,7 +453,7 @@ class LSTMTrainer:
             ytest (np.ndarray): The testing target data.
 
         Returns:
-            None
+            model_path (str): The path to the saved model.
         """
         
         # Training Loop
@@ -485,6 +486,8 @@ class LSTMTrainer:
         model_path = os.path.join(model_dir, f'lstm_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
         print('Model saved as:', model_path)
+
+        return model_path
 
 class TCNTrainer:
     def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):

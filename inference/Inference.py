@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import pandas as pd
 from torch.utils.data import DataLoader
 import glob
 import os
@@ -57,11 +58,14 @@ def feature_selection(df, smart_attributes):
     # Find columns that start with 'smart_' and match smart_attributes
     selected_smart_columns = [col for col in df.columns if col.startswith('smart_') and col in smart_attributes]
 
-    # Find columns that do not start with 'smart_'
-    non_smart_columns = [col for col in df.columns if not col.startswith('smart_')]
+    # Define the list of other columns to retain
+    essential_columns = ['serial_number', 'model', 'capacity_bytes', 'date']
 
-    # Combine selected smart columns with non-smart columns
-    selected_columns = selected_smart_columns + non_smart_columns
+    # Find columns that are in the list of other columns to retain
+    other_columns = [col for col in df.columns if col in essential_columns]
+
+    # Combine selected smart columns with other columns
+    selected_columns = selected_smart_columns + other_columns
 
     # Return the dataframe with only the selected columns
     return df[selected_columns]
@@ -134,17 +138,18 @@ def infer(model, X, classifier):
 def initialize_inference(*args):
     # Define parameter names and create a dictionary of params
     param_names = [
-        'id_number', 'classifier', 'cuda_dev'
+        'id_number', 'classifier', 'cuda_dev', 'csv_file'
     ]
 
     # Assign values directly from the dictionary
     (
-        id_number, classifier, CUDA_DEV
+        id_number, classifier, CUDA_DEV, csv_file
     ) = dict(zip(param_names, args)).values()
 
     params = read_params_from_json(classifier, id_number)
     
     # Unpack the params dictionary into individual variables
+    serial_number = params['serial_number']
     overlap = params['overlap']
     windowing = params['windowing']
     history_signal = params['history_signal']
@@ -180,8 +185,11 @@ def initialize_inference(*args):
     # Load the model
     model = load_model(model, latest_file)
 
-    # Feature Selection: Subflow chart of Main Classification Process
-    df = feature_selection(df, smart_attributes)
+    # Read the CSV file
+    df = pd.read_csv(csv_file.name)
+
+    # Filter the DataFrame, then select the feature columns based on the smart attributes
+    df = feature_selection(df[df['serial_number'] == serial_number], smart_attributes)
     print('Used features')
     for column in list(df):
         print('{:.<27}'.format(column,))

@@ -15,6 +15,7 @@ import re
 import dask.dataframe as dd
 from collections import Counter
 from multiprocessing import Pool, Manager, Lock
+import logger
 
 
 def plot_feature(dataset):
@@ -738,6 +739,8 @@ class DatasetPartitioner:
 
         # Compute the final Dask DataFrame to pandas DataFrame
         final_df = windowed_df.compute()
+        # Handle NA values with padding
+        final_df = final_df.fillna(method='ffill')
         
         #print('perform_windowing:', self.df.columns)
 
@@ -1134,7 +1137,7 @@ if __name__ == '__main__':
     model = 'ST3000DM001'
     years = ['2013', '2014', '2015', '2016', '2017']
     df = import_data(years, model, features)
-    # print(df.head())
+    logger.info('Data imported successfully, processing smart attributes...')
     for column in list(df):
         missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
         print('{:.<27}{}%'.format(column, missing))

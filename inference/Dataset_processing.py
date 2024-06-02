@@ -85,28 +85,6 @@ class DatasetProcessing:
         if n > 1:
             factors.append(n)
         return factors
-    
-    def under_sample(self, df, down_factor):
-        """
-        Perform under-sampling on a DataFrame.
-
-        Args:
-            df (pandas.DataFrame): The input DataFrame.
-            down_factor (int): The down-sampling factor.
-
-        Returns:
-            list: A list of indexes to be used for under-sampling.
-
-        """
-        indexes = (
-            df.predict_val
-            .rolling(down_factor) # Create a rolling window of size down_factor over the 'predict_val' column
-            .max() # Find the maximum value in each window.
-            [((len(df) - 1) % down_factor):-7:down_factor]
-            .index
-            .tolist()
-        )
-        return indexes
 
     def rename_columns(self, df):
         """
@@ -151,7 +129,7 @@ class DatasetProcessing:
                 print(f'Concatenating time - {i} \r', end="\r")
                 # Shift the dataframe and concatenate along the columns
                 windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
-        elif self.overlap == 2:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
+        else:  # FIXME: If the overlap option is chosed as dynamic overlap based on the factors of window_dim
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)
             total_shifts = 0
@@ -168,45 +146,17 @@ class DatasetProcessing:
                 # Compute intermediate result to apply sampling
                 windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
                 # Under sample the dataframe based on the serial numbers and the factor
-                indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
+                # It is suitable for inference when you need to preprocess new data in a way consistent with the training data preprocessing but without labels.
+                indexes = windowed_df.groupby(serials).apply(lambda x: x.iloc[::down_factor].index)
                 # Update windowed_df based on the indexes
                 windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
                 # Convert back to Dask DataFrame
                 windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
-        else:  # If the overlap is other value, then we only completely overlap the dataset for the failed HDDs, and dynamically overlap the dataset for the good HDDs
-            # Get the factors of window_dim
-            window_dim_divisors = self.factors(self.window_dim)
-            total_shifts = 0
-            previous_down_factor = 1
-            serials = self.df['serial_number']
-            df_failed = self.df[self.df['validate_val']==1]
-            windowed_df_failed = df_failed
-            for i in np.arange(self.window_dim - 1):
-                print(f'Concatenating time - {i} \r', end="\r")
-                # Shift the dataframe and concatenate along the columns
-                windowed_df_failed = dd.concat([self.df.shift(i + 1), windowed_df_failed], axis=1)
-            for down_factor in window_dim_divisors:
-                # Shift the dataframe by the factor and concatenate
-                for i in np.arange(down_factor - 1):
-                    total_shifts += previous_down_factor
-                    print(f'Concatenating time - {total_shifts} \r', end="\r")
-                    windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
-                previous_down_factor *= down_factor
-
-                # Compute intermediate result to apply sampling
-                windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
-                # Under sample the dataframe based on the serial numbers and the factor
-                indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
-                # Update windowed_df based on the indexes
-                windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
-                # Convert back to Dask DataFrame
-                windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
-
-            windowed_df = windowed_df.append(windowed_df_failed)
-            windowed_df.reset_index(inplace=True,drop=True)
 
         # Compute the final Dask DataFrame to pandas DataFrame
         final_df = windowed_df.compute()
+        # Handle NA values with padding
+        final_df = final_df.fillna(method='ffill')
         
         #print('perform_windowing:', self.df.columns)
 

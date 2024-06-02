@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import sys
+from sklearn.cluster import DBSCAN
 from Dataset_manipulation import *
 if not sys.warnoptions:
     import warnings
@@ -11,7 +12,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.utils import shuffle
 from Networks_pytorch import *
-from sklearn.metrics import accuracy_score, roc_auc_score, make_scorer
+from sklearn.metrics import accuracy_score, roc_auc_score, make_scorer, silhouette_score
 import torch.optim as optim
 from sklearn import svm
 from tqdm import tqdm
@@ -22,6 +23,7 @@ from joblib import dump
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score, StratifiedKFold
 from sklearn.naive_bayes import GaussianNB
 import json
+import logger
 
 
 def save_best_params_to_json(best_params, classifier_name, id_number):
@@ -49,7 +51,7 @@ def save_best_params_to_json(best_params, classifier_name, id_number):
     with open(file_path, 'w') as f:
         json.dump(best_params, f)
 
-    print(f'Best parameters saved to: {file_path}')
+    logger.info(f'Best parameters saved to: {file_path}')
 
 def load_best_params_from_json(classifier_name, id_number):
     """
@@ -72,7 +74,7 @@ def load_best_params_from_json(classifier_name, id_number):
     with open(file_path, 'r') as f:
         best_params = json.load(f)
 
-    print(f'Best parameters loaded from: {file_path}')
+    logger.info(f'Best parameters loaded from: {file_path}')
 
     return best_params
 
@@ -94,13 +96,19 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
         n_iterations (int, optional): The number of iterations for training. Defaults to 100.
 
     Returns:
-        None
+        str: The path to the saved model file.
     """
     writer = SummaryWriter(f'runs/{classifier_name}_Training_Graph')
     X_train, Y_train = shuffle(X_train, Y_train)
 
-    # Define scoring metrics
-    scoring = {'accuracy': make_scorer(accuracy_score), 'f1': make_scorer(f1_score)}
+    # Define supervised classifiers
+    supervised_classifiers = ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes']
+
+    # Define scoring metrics based on the type of classifier
+    if classifier_name in supervised_classifiers:
+        scoring = {'accuracy': make_scorer(accuracy_score), 'f1': make_scorer(f1_score)}
+    else:
+        scoring = {'silhouette': make_scorer(silhouette_score)}
 
     # Choose the search method
     search_method = 'randomized'  # 'grid' for GridSearchCV, 'randomized' for RandomizedSearchCV
@@ -117,18 +125,23 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     # Fit the search method
     search.fit(X_train, Y_train)
 
-    # Define StratifiedKFold cross-validator
-    stratified_kfold = StratifiedKFold(n_splits=5)
+    if classifier_name in supervised_classifiers:
+        # Define StratifiedKFold cross-validator
+        stratified_kfold = StratifiedKFold(n_splits=5)
+        # Calculate cross validation score
+        cv_scores = cross_val_score(search.best_estimator_, X_train, Y_train, cv=stratified_kfold)
 
-    # Calculate cross validation score
-    cv_scores = cross_val_score(search.best_estimator_, X_train, Y_train, cv=stratified_kfold)
-
-    print(f"Cross validation scores: {cv_scores}")
-    print(f"Mean cross validation score: {cv_scores.mean()}")
+        logger.info(f"Cross validation scores: {cv_scores}")
+        logger.info(f"Mean cross validation score: {cv_scores.mean()}")
+    else:
+        # For unsupervised classifiers, calculate silhouette score
+        labels = search.best_estimator_.fit_predict(X_train)
+        silhouette_avg = silhouette_score(X_train, labels)
+        logger.info(f"Silhouette score: {silhouette_avg}")
 
     # Get the best parameters
     best_params = search.best_params_
-    print(f"Best parameters: {best_params}")
+    logger.info(f"Best parameters: {best_params}")
 
     # Save the best parameters to a JSON file
     save_best_params_to_json(best_params, classifier_name, id_number)
@@ -149,7 +162,7 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     Y_test_real = Y_test
     accuracy = accuracy_score(Y_test_real, prediction)
     auc = roc_auc_score(Y_test_real, prediction)
-    print(f'{classifier_name} Prediction Accuracy: {accuracy * 100:.4f}%, AUC: {auc:.2f}')
+    logger.info(f'{classifier_name} Prediction Accuracy: {accuracy * 100:.4f}%, AUC: {auc:.2f}')
     report_metrics(Y_test_real, prediction, metric, writer, n_iterations)  # TODO:
     writer.close()
 
@@ -163,7 +176,9 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     # Save the model
     model_path = os.path.join(model_dir, f'{classifier_name}_{id_number}_iterations_{n_iterations}_{now_str}.joblib')
     dump(best_model, model_path)
-    print('Model saved as:', model_path)
+    logger.info(f'Model saved as: {model_path}')
+
+    return model_path
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -179,9 +194,9 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     - **args: Additional arguments specific to each classifier.
 
     Returns:
-    - None
+    - str: The path to the saved model file.
     """
-    print('Classification using {} is starting'.format(classifier))
+    logger.info(f'Classification using {classifier} is starting')
 
     n_iterations = 100
     if classifier == 'RandomForest':
@@ -209,7 +224,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'KNeighbors':
         # Step 1.7.2: Perform Classification using KNeighbors.
         try:
@@ -231,7 +246,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'DecisionTree':
         # Step 1.7.3: Perform Classification using DecisionTree.
         try:
@@ -255,7 +270,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'LogisticRegression':
         # Step 1.7.4: Perform Classification using LogisticRegression.
         try:
@@ -278,7 +293,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'SVM':
         # Step 1.7.5: Perform Classification using SVM.
         try:
@@ -300,7 +315,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'XGB':
         # Step 1.7.7: Perform Classification using XGBoost.
         try:
@@ -327,7 +342,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'IsolationForest':
         # Step 1.7.9: Perform Classification using IsolationForest.
         try:
@@ -351,7 +366,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'ExtraTrees':
         try:
             best_params = load_best_params_from_json(classifier, args['id_number'])
@@ -370,8 +385,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
-
+        return train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'GradientBoosting':
         try:
             best_params = load_best_params_from_json(classifier, args['id_number'])
@@ -392,7 +406,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
             param_grid = {}
 
-        train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'NaiveBayes':
         # Step 1.7.6: Perform Classification using Naive Bayes.
         try:
@@ -410,7 +424,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         if best_params:
             model.set_params(**best_params)
 
-        train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
@@ -423,7 +437,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
-        tcn_trainer.run(X_train, Y_train, X_test, Y_test)
+        return tcn_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'LSTM':
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
         lstm_trainer = LSTMTrainer(
@@ -435,7 +449,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
-        lstm_trainer.run(X_train, Y_train, X_test, Y_test)
+        return lstm_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'MLP_Manual':
         # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
         # Initialize the MLPTrainer with the appropriate parameters
@@ -448,7 +462,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             id_number=args['id_number']
         )
         # Run training and testing using the MLPTrainer
-        mlp_trainer.run(X_train, Y_train, X_test, Y_test)
+        return mlp_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'MLP':
         # Step 1.7.8: Perform Classification using MLP.
         model = MLPClassifier()
@@ -463,7 +477,30 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'max_iter': [200, 500, 1000]
         }
 
-        train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+    elif classifier == 'DBSCAN':
+        # Step 1.7.3: Perform Classification using DBSCAN.
+        try:
+            best_params = load_best_params_from_json(classifier, args['id_number'])
+        except FileNotFoundError:
+            best_params = None
+
+        model = DBSCAN()
+
+        # Define the parameter grid
+        param_grid = {
+            'eps': [0.3, 0.5, 0.7],
+            'min_samples': [5, 10, 15],
+            'leaf_size': [10, 20, 30],
+            'metric': ['euclidean', 'manhattan', 'chebyshev']
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+            param_grid = {}
+
+        return train_and_evaluate_model(model, param_grid, 'DBSCAN', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
 
 def factors(n):
     """
@@ -493,7 +530,16 @@ def factors(n):
     return factors
 
 def save_params_to_json(df, *args):
+    """
+    Save the parameters to a JSON file.
 
+    Args:
+        df (DataFrame): The input DataFrame.
+        *args: Variable length argument list containing the parameter values.
+
+    Returns:
+        str: The file path where the parameters are saved.
+    """
     # Define parameter names and create a dictionary of params
     param_names = [
         'model', 'id_number', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
@@ -520,7 +566,7 @@ def save_params_to_json(df, *args):
     if not os.path.exists(param_dir):
         os.makedirs(param_dir)
 
-    print('User parameters:', params)
+    logger.info(f'User parameters: {params}')
 
     # Define the file path
     file_path = os.path.join(param_dir, f'{params['classifier'].lower()}_{params['id_number']}_params_{now_str}.json')
@@ -529,7 +575,9 @@ def save_params_to_json(df, *args):
     with open(file_path, 'w') as f:
         json.dump(params, f)
 
-    print(f'Parameters saved to: {file_path}')
+    logger.info(f'Parameters saved to: {file_path}')
+
+    return file_path
 
 def initialize_classification(*args):
     # ------------------ #
@@ -624,7 +672,7 @@ def initialize_classification(*args):
         # If it fails, it's a string and we leave it as is
         pass
 
-    print('Current id number:', id_number)
+    logger.info(f'Logger initialized successfully! Current id number is: {id_number}')
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -638,10 +686,10 @@ def initialize_classification(*args):
         else:
             df = import_data(years=years, model=model, name='iSTEP')
 
-        print('Data imported successfully, processing smart attributes...')
+        logger.info('Data imported successfully, processing smart attributes...')
         for column in list(df):
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
-            print('{:.<27}{}%'.format(column, missing))
+            logger.info('{:.<27}{}%'.format(column, missing))
         # Step 1.2: Filter out the bad HDDs.
         bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=2)
         # predict_val represents the prediction value of the failure
@@ -656,10 +704,10 @@ def initialize_classification(*args):
         if ranking != 'None':
             # Step 1.4: Feature Selection: Subflow chart of Main Classification Process
             df = feature_selection(df, num_features)
-        print('Used features')
+        logger.info('Used features')
         for column in list(df):
-            print('{:.<27}'.format(column,))
-        print('Saving to pickle file:', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
+            logger.info('{:.<27}'.format(column,))
+        logger.info(f'Saving to pickle file: {model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
 
         output_dir = os.path.join(script_dir, '..', 'output')
         # Create the directory if it doesn't exist
@@ -672,8 +720,8 @@ def initialize_classification(*args):
         df = interpolate_ts(df, method=interpolate_technique)
 
     # Saving parameters to json file
-    print('Saving parameters to json file...')
-    save_params_to_json(
+    logger.info('Saving parameters to json file...')
+    param_path = save_params_to_json(
         df, model, id_number, years, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, perform_features_extraction, CUDA_DEV,
@@ -715,13 +763,13 @@ def initialize_classification(*args):
             data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
         else:
             data_dim = 1
-        print(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
+        logger.info(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
         net = TCN_Network(data_dim, num_inputs)
         if torch.cuda.is_available():
-            print('Moving model to cuda')
+            logger.info('Moving model to cuda')
             net.cuda()
         else:
-            print('Model to cpu')
+            logger.info('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
         optimizer = optim.Adam(net.parameters(), lr=lr)
     elif classifier == 'LSTM':
@@ -738,10 +786,10 @@ def initialize_classification(*args):
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
         if torch.cuda.is_available():
-            print('Moving model to cuda')
+            logger.info('Moving model to cuda')
             net.cuda()
         else:
-            print('Model to cpu')
+            logger.info('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
         optimizer = optim.Adam(net.parameters(), lr=lr)
     elif classifier == 'MLP_Manual':
@@ -753,13 +801,13 @@ def initialize_classification(*args):
         input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
         hidden_dim = 128  # Example hidden dimension, can be adjusted
 
-        print(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
+        logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
         net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
         if torch.cuda.is_available():
-            print('Moving model to cuda')
+            logger.info('Moving model to cuda')
             net.cuda()
         else:
-            print('Model to cpu')
+            logger.info('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
         optimizer = optim.Adam(net.parameters(), lr=lr)
     ## ---------------------------- ##
@@ -770,13 +818,13 @@ def initialize_classification(*args):
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)
     # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
-    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes'] and windowing == 1:
+    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes', 'DBSCAN'] and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
     try:
         # Parameters for TCN and LSTM networks
-        classification(
+        model_path = classification(
             X_train=Xtrain,
             Y_train=ytrain,
             X_test=Xtest,
@@ -792,7 +840,7 @@ def initialize_classification(*args):
         )
     except:
         # Parameters for RandomForest
-        classification(
+        model_path = classification(
             X_train=Xtrain,
             Y_train=ytrain,
             X_test=Xtest,
@@ -804,4 +852,4 @@ def initialize_classification(*args):
             id_number=id_number
         )
 
-    return 'Classification completed successfully'
+    return logger.get_log_file_path(), model_path, param_path
