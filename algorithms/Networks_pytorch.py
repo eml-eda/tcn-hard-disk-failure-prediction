@@ -299,7 +299,7 @@ def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     return f1_score(Y_test_real, prediction)
 
 class LSTMTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
         """
         Initialize the LSTMModelTrainer with all necessary components.
 
@@ -309,12 +309,14 @@ class LSTMTrainer:
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Learning rate for the optimizer.
+            id_number (int): The ID number of the model.
         """
         self.model = model
         self.optimizer = optimizer
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
+        self.penalty = penalty
         self.id_number = id_number
         self.writer = SummaryWriter('runs/LSTM_Training_Graph')
 
@@ -351,6 +353,7 @@ class LSTMTrainer:
         class_weights = torch.FloatTensor(weights).cuda()  # Convert class weights to a CUDA tensor
         predictions = np.zeros((Xtrain.shape[0], 2))  # Store the model's predictions
         true_labels = np.zeros(Xtrain.shape[0])  # Store the true labels
+        # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 
         for batch_idx, data in enumerate(train_loader):
@@ -490,7 +493,7 @@ class LSTMTrainer:
         return model_path
 
 class TCNTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
         """
         Initialize the TCNTrainer with all necessary components for training and testing.
 
@@ -507,6 +510,7 @@ class TCNTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
+        self.penalty = penalty
         self.id_number = id_number
         self.writer = SummaryWriter('runs/TCN_Training_Graph')
 
@@ -534,7 +538,7 @@ class TCNTrainer:
         weights = [1.7, 0.3]
         # we use the GPU to train
         class_weights = torch.FloatTensor(weights).cuda()
-        # we use the CrossEntropyLoss as loss function
+        # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 
         for batch_idx in np.arange(nbatches + 1):
@@ -683,7 +687,7 @@ class TCNTrainer:
         print('Model saved as:', model_path)
 
 class MLPTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, id_number):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
         """
         Initialize the MLPTrainer with all necessary components for training and testing.
 
@@ -700,6 +704,7 @@ class MLPTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
+        self.penalty = penalty
         self.id_number = id_number
         self.writer = SummaryWriter('runs/MLP_Training_Graph')
 
@@ -723,6 +728,7 @@ class MLPTrainer:
         true_labels = np.zeros(samples)  # Store the true labels
         weights = [1.7, 0.3]
         class_weights = torch.FloatTensor(weights).cuda()
+        # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 
         for batch_idx in np.arange(nbatches + 1):

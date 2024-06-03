@@ -26,6 +26,19 @@ import json
 import logger
 
 
+# Define default global values
+TRAINING_PARAMS = {
+    'penalty': 1,
+    'batch_size': 256,
+    'lr': 0.001,
+    'weight_decay': 0.01,
+    'epochs': 200,
+    'dropout': 0.1,  # LSTM
+    'lstm_hidden_s': 64,  # LSTM
+    'fc1_hidden_s': 16,  # LSTM
+    'hidden_dim': 128,  # MLP_Manual
+}
+
 def save_best_params_to_json(best_params, classifier_name, id_number):
     """
     Saves the best parameters to a JSON file.
@@ -434,6 +447,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
+            penalty=args['penalty'],                # Regularization penalty
             id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
@@ -446,6 +460,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
+            penalty=args['penalty'],                # Regularization penalty
             id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
@@ -459,6 +474,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
+            penalty=args['penalty'],                # Regularization penalty
             id_number=args['id_number']
         )
         # Run training and testing using the MLPTrainer
@@ -578,6 +594,21 @@ def save_params_to_json(df, *args):
     logger.info(f'Parameters saved to: {file_path}')
 
     return file_path
+
+def set_training_params(*args):
+    # Use the global keyword when modifying global variables
+    global TRAINING_PARAMS
+    TRAINING_PARAMS = {
+        'penalty': args['penalty'],
+        'batch_size': args['batch_size'],
+        'lr': args['lr'],
+        'weight_decay': args['weight_decay'],
+        'epochs': args['epochs'],
+        'dropout': args['dropout'],  # LSTM
+        'lstm_hidden_s': args['lstm_hidden_s'],  # LSTM
+        'fc1_hidden_s': args['fc1_hidden_s'],  # LSTM
+        'hidden_dim': args['hidden_dim'],  # MLP_Manual
+    }
 
 def initialize_classification(*args):
     # ------------------ #
@@ -751,12 +782,14 @@ def initialize_classification(*args):
 
     # Step 1.6: Classifier Selection: set training parameters
     ####### CLASSIFIER PARAMETERS #######
+    os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
     if classifier == 'TCN':
         # Step 1.6.1: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
-        os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
-        batch_size = 256
-        lr = 0.001
-        epochs = 200
+        penalty = TRAINING_PARAMS['penalty']
+        batch_size = TRAINING_PARAMS['batch_size']
+        lr = TRAINING_PARAMS['lr']
+        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
+        epochs = TRAINING_PARAMS['epochs']
         num_inputs = Xtrain.shape[1]
         # Calculate the data dimension based on the history signal and overlap.
         if windowing == 1:
@@ -772,18 +805,32 @@ def initialize_classification(*args):
         else:
             logger.info('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = optim.Adam(net.parameters(), lr=lr)
+        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+
+        # Define the best parameters
+        best_params = {
+            'penalty': penalty,
+            'batch_size': batch_size,
+            'lr': lr,
+            'weight_decay': weight_decay,
+            'epochs': epochs,
+        }
+
+        # Save the best parameters to a JSON file
+        save_best_params_to_json(best_params, classifier, id_number)
     elif classifier == 'LSTM':
         # Step 1.6.2: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
-        lr = 0.001
-        batch_size = 256
-        epochs = 300
-        dropout = 0.1
+        penalty = TRAINING_PARAMS['penalty']
+        lr = TRAINING_PARAMS['lr']
+        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
+        batch_size = TRAINING_PARAMS['batch_size']
+        epochs = TRAINING_PARAMS['epochs']
+        dropout = TRAINING_PARAMS['dropout']
         # Hidden state sizes (from [14])
         # The dimensionality of the output space of the LSTM layer
-        lstm_hidden_s = 64
+        lstm_hidden_s = TRAINING_PARAMS['lstm_hidden_s']
         # The dimensionality of the output space of the first fully connected layer
-        fc1_hidden_s = 16
+        fc1_hidden_s = TRAINING_PARAMS['fc1_hidden_s']
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
         if torch.cuda.is_available():
@@ -792,15 +839,31 @@ def initialize_classification(*args):
         else:
             logger.info('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = optim.Adam(net.parameters(), lr=lr)
+        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+
+        # Define the best parameters
+        best_params = {
+            'penalty': penalty,
+            'batch_size': batch_size,
+            'lr': lr,
+            'weight_decay': weight_decay,
+            'epochs': epochs,
+            'dropout': dropout,
+            'lstm_hidden_s': lstm_hidden_s,
+            'fc1_hidden_s': fc1_hidden_s,
+        }
+
+        # Save the best parameters to a JSON file
+        save_best_params_to_json(best_params, classifier, id_number)
     elif classifier == 'MLP_Manual':
         # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
-        os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
-        batch_size = 256
-        lr = 0.001
-        epochs = 200
+        penalty = TRAINING_PARAMS['penalty']
+        batch_size = TRAINING_PARAMS['batch_size']
+        lr = TRAINING_PARAMS['lr']
+        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
+        epochs = TRAINING_PARAMS['epochs']
         input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
-        hidden_dim = 128  # Example hidden dimension, can be adjusted
+        hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
 
         logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
         net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
@@ -810,7 +873,20 @@ def initialize_classification(*args):
         else:
             logger.info('Model to cpu')
         # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = optim.Adam(net.parameters(), lr=lr)
+        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+
+        # Define the best parameters
+        best_params = {
+            'penalty': penalty,
+            'batch_size': batch_size,
+            'lr': lr,
+            'weight_decay': weight_decay,
+            'epochs': epochs,
+            'hidden_dim': hidden_dim,
+        }
+
+        # Save the best parameters to a JSON file
+        save_best_params_to_json(best_params, classifier, id_number)
     ## ---------------------------- ##
 
     # Step x.1: Feature Extraction
@@ -851,6 +927,7 @@ def initialize_classification(*args):
             epochs=epochs,
             batch_size=batch_size,
             lr=lr,
+            penalty=penalty,
             id_number=id_number
         )
     except:
