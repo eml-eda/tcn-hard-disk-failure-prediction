@@ -156,6 +156,7 @@ def initialize_inference(*args):
     perform_features_extraction = params['perform_features_extraction']
     interpolate_technique = params['interpolate_technique']
     smart_attributes = params['smart_attributes']
+    days_considered_as_failure = params['days_considered_as_failure']
 
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
     # Path to the saved model
@@ -189,7 +190,7 @@ def initialize_inference(*args):
     df = pd.read_csv(csv_file.name)
 
     # Filter the DataFrame, then select the feature columns based on the smart attributes
-    df = feature_selection(df[df['serial_number'] == serial_number], smart_attributes)
+    df = feature_selection(df.loc[(serial_number, slice(None))], smart_attributes)
     print('Used features')
     for column in list(df):
         print('{:.<27}'.format(column,))
@@ -200,6 +201,7 @@ def initialize_inference(*args):
         overlap=overlap,
         windowing=windowing,
         window_dim=history_signal,
+        days=days_considered_as_failure,
     )
 
     # Step x.1: Feature Extraction

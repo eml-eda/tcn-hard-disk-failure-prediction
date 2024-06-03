@@ -1,10 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
-import glob
 from sklearn.preprocessing import MinMaxScaler
-import scipy
-import scipy.stats
 import re
 import dask.dataframe as dd
 
@@ -12,7 +9,7 @@ class DatasetProcessing:
     """
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
-    def __init__(self, df, overlap=0, windowing=1, window_dim=5):
+    def __init__(self, df, overlap=0, windowing=1, window_dim=5, days=7):
         """
         Initialize the DatasetProcessing object.
         
@@ -21,19 +18,20 @@ class DatasetProcessing:
         - overlap (int): The overlap value for windowing (default: 0).
         - windowing (int): The windowing value (default: 1).
         - window_dim (int): The window dimension (default: 5).
+        - days (int): The number of days (default: 7).
 
         """
         self.df = df
         self.overlap = overlap
         self.windowing = windowing
         self.window_dim = window_dim
+        self.days = days
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.X = self.partition()
 
     def partition(self):
         """
         Partition the dataset into training and test sets.
-
 
         Parameters:
             None
@@ -47,18 +45,28 @@ class DatasetProcessing:
 
         # Extract temporal data
         # Updated: temporal now also drops 'model' and 'capacity_bytes' columns, because they are object. We need float64.
-        temporal = self.df[['serial_number', 'date', 'failure', 'predict_val', 'validate_val', 'model', 'capacity_bytes']]
+        temporal = self.df[['serial_number', 'date', 'failure', 'model', 'capacity_bytes']]
         self.df.drop(columns=temporal.columns, inplace=True)
         self.df = pd.DataFrame(mms.fit_transform(self.df), columns=self.df.columns, index=self.df.index)
         # self.df is now normalized, but temporal is original string data, to avoid normalization of 'serial_number' and 'date' and other non float64 columns
         self.df = pd.concat([self.df, temporal], axis=1)
+
+        # Repeat the data until it reaches the required length
+        if self.windowing == 1:
+            group_sizes = self.days + self.window_dim
+            # If the length of the df is less than group_sizes, repeat the data until it reaches the required length
+            if len(self.df) < group_sizes:
+                while len(self.df) < group_sizes:
+                    self.df = pd.concat([self.df, self.df], ignore_index=True)
+                # Trim the df to the required length
+                self.df = self.df.iloc[:group_sizes]
 
         print ('Windowing the df')
         windowed_df = self.perform_windowing()
 
         print('Preprocessing test dataset')
         return self.preprocess_dataset(windowed_df)
-    
+
     def factors(self, n):
         """
         Returns a list of factors of the given number.

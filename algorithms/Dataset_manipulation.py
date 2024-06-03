@@ -408,7 +408,9 @@ def interpolate_ts(df, method='linear'):
 
     for serial_num, inner_df in df.groupby(level=0):
         inner_df = inner_df.droplevel(level=0).asfreq('D') 
-        inner_df.interpolate(method=method, axis=0, inplace=True)
+        inner_df.interpolate(method=method, limit_direction='both', axis=0, inplace=True)
+        inner_df.fillna(method='ffill', inplace=True)  # Forward fill
+        inner_df.fillna(method='bfill', inplace=True)  # Backward fill
         inner_df['serial_number'] = serial_num
         inner_df = inner_df.reset_index()
 
@@ -502,7 +504,7 @@ class DatasetPartitioner:
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
     def __init__(self, df, model, overlap=0, rank='None', num_features=10, technique='random',
-                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample=0):
+                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample=0, fillna_method='None'):
         """
         Initialize the DatasetPartitioner object.
         
@@ -518,6 +520,7 @@ class DatasetPartitioner:
         - window_dim (int): The window dimension (default: 5).
         - resampler_balancing (float): The resampler balancing factor (default: auto).
         - oversample_undersample (int): The oversample/undersample value (default: 0).
+        - fillna_method (str): Method to fill the NA values (default: 'None').
 
         """
         self.df = df
@@ -531,6 +534,7 @@ class DatasetPartitioner:
         self.window_dim = window_dim
         self.resampler_balancing = resampler_balancing
         self.oversample_undersample = oversample_undersample
+        self.fillna_method = fillna_method
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.Xtrain, self.Xtest, self.ytrain, self.ytest = self.partition()
 
@@ -595,6 +599,7 @@ class DatasetPartitioner:
     def under_sample(self, df, down_factor):
         """
         Perform under-sampling on a DataFrame.
+        As a result of the undersampling, any NA values introduced by shifting are filtered out, leaving no NA rows in the final windowed DataFrame.
 
         Args:
             df (pandas.DataFrame): The input DataFrame.
@@ -734,13 +739,11 @@ class DatasetPartitioner:
                 # Convert back to Dask DataFrame
                 windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
 
-            windowed_df = windowed_df.append(windowed_df_failed)
-            windowed_df.reset_index(inplace=True,drop=True)
+            windowed_df = dd.concat([windowed_df, windowed_df_failed])
+            windowed_df.reset_index(inplace=True, drop=True)
 
         # Compute the final Dask DataFrame to pandas DataFrame
         final_df = windowed_df.compute()
-        # Handle NA values with padding
-        final_df = final_df.fillna(method='ffill')
         
         #print('perform_windowing:', self.df.columns)
 
@@ -875,30 +878,23 @@ class DatasetPartitioner:
         columns_to_drop = [col for col in df.columns if re.match(pattern, col)]
         df.drop(columns=columns_to_drop, inplace=True)
 
-        # If we found some data about the 'date', 'serial_number', 'capacity_bytes', 'failure' are missing, we should drop them.
-        essential_columns = ['date', 'serial_number', 'capacity_bytes', 'failure']
-
-        # Identify any missing columns in the DataFrame
-        missing_columns = [col for col in essential_columns if col not in df.columns]
-
-        # If no essential columns are missing, drop rows with missing data in these columns
-        if not missing_columns:
+        if self.fillna_method == 'None':
             # Record the number of rows before dropping
-            rows_before = df.shape[0]
-            
-            # Drop rows where any of the essential columns have missing data
-            df.dropna(subset=essential_columns, inplace=True)
-            
-            # Record the number of rows after dropping
-            rows_after = df.shape[0]
+            # rows_before = df.shape[0]
 
-            # Calculate the number of rows dropped
-            rows_dropped = rows_before - rows_after
+            # # Drop rows where 'model' column has NA values
+            # df.dropna(subset=['model'], inplace=True)
 
+            # # Calculate the number of rows dropped
+            # rows_dropped = rows_before - df.shape[0]
+
+            # print(f"Dropped {rows_dropped} rows")
+            rows_dropped = self.window_dim - 1 if self.overlap == 1 else 2 ** (len(self.factors(self.window_dim)) - 1) - 1
+            df = df.iloc[rows_dropped:]
             print(f"Dropped {rows_dropped} rows")
         else:
-            # Print an error message if essential columns are missing
-            print(f"Columns {missing_columns} do not exist in the DataFrame.")
+            # Handle NA values with padding
+            df.fillna(method=self.fillna_method, inplace=True)
 
         # Drop missing value columns - dropped the rows based on missing values
         df.dropna(axis='columns', inplace=True)
@@ -913,23 +909,6 @@ class DatasetPartitioner:
         df.reset_index(inplace=True)
         
         return df
-
-    # def get_invalid_indexes(self, df): # BUG:
-    #     """
-    #     Get the indexes of invalid windows in the dataframe.
-
-    #     Parameters:
-    #     - df (DataFrame): The input dataframe.
-
-    #     Returns:
-    #     - list: The indexes of invalid windows.
-    #     """
-    #     indexes = []
-    #     for serial_num, inner_df in df.groupby(level=0):
-    #         print(f'Computing index of invalid windows of HD number {serial_num} \r', end="\r")
-    #         index_to_append = inner_df[:self.window_dim].index if self.overlap == 1 else inner_df[:1].index 
-    #         indexes.append(index_to_append)
-    #     return indexes
 
     def balance_data(self, Xtrain, ytrain, Xtest, ytest):
         """

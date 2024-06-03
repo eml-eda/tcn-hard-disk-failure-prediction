@@ -25,6 +25,7 @@ if __name__ == '__main__':
             gr.Dropdown(choices=['random', 'hdd', 'date'], value='random', label='Split Technique', info='Data split technique.'),
             gr.Dropdown(choices=['linear', 'time', 'None'], value='linear', label='Interpolate Technique', info='Interpolation technique.'),
             gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Optimal parameters search technique.'),
+            gr.Dropdown(choices=['ffill', 'None'], value='None', label='Fill NA Method', info='Method to fill NA values.'),
         ],
         outputs=[
             gr.File(label='Download Log File', type='filepath'),

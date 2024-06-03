@@ -636,7 +636,7 @@ def initialize_classification(*args):
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method'
+        'search_method', 'fillna_method'
     ]
 
     # Assign values directly from the dictionary
@@ -645,7 +645,7 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, perform_features_extraction, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method
+        search_method, fillna_method
     ) = dict(zip(param_names, args)).values()
     # here you can select the model. This is the one tested.
     # Correct years for the model
@@ -745,7 +745,8 @@ def initialize_classification(*args):
         windowing=windowing,
         window_dim=history_signal,
         resampler_balancing=balancing_normal_failed,
-        oversample_undersample=oversample_undersample
+        oversample_undersample=oversample_undersample,
+        fillna_method=fillna_method
     )
 
     # Step 1.6: Classifier Selection: set training parameters
@@ -818,7 +819,21 @@ def initialize_classification(*args):
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)
     # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
-    if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes', 'DBSCAN'] and windowing == 1:
+    classifiers = [
+        'RandomForest', 
+        'KNeighbors', 
+        'DecisionTree', 
+        'LogisticRegression', 
+        'SVM', 
+        'XGB', 
+        'MLP', 
+        'IsolationForest', 
+        'ExtraTrees', 
+        'GradientBoosting', 
+        'NaiveBayes', 
+        'DBSCAN'
+    ]
+    if classifier in classifiers and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
@@ -846,8 +861,8 @@ def initialize_classification(*args):
             X_test=Xtest,
             Y_test=ytest,
             classifier=classifier,
-            # FDR, FAR, F1, recall, precision are not calculated for RandomForest, it will report as 0.0
-            metric=['RMSE', 'MAE'],
+            # FDR, FAR, F1, recall, precision are not calculated for some algorithms, it will report as 0.0
+            metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
             search_method=search_method,
             id_number=id_number
         )
