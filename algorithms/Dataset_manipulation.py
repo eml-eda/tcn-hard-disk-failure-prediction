@@ -303,26 +303,26 @@ def import_data(years, model, name, **args):
 
     try:
         df = pd.read_pickle(file)
-        print(f'Data loaded from {file}')
+        logger.info(f'Data loaded from {file}')
     except FileNotFoundError:
-        print('Creating new DataFrame from CSV files.')
+        logger.info('Creating new DataFrame from CSV files.')
 
         with Manager() as manager:
             all_data = manager.list()
             progress_list = manager.Value('i', 0)
 
             for y in years:
-                print('\nProcessing year:', y)
+                logger.info('\nProcessing year:', y)
                 dir_path = os.path.join(script_dir, '..', 'HDD_dataset', y)
                 if not os.path.exists(dir_path):
-                    print(f"Error: Directory {dir_path} does not exist.")
+                    logger.error(f"Error: Directory {dir_path} does not exist.")
                     continue
                 files = glob.glob(os.path.join(dir_path, '*.csv'))
                 total_files = len(files)
-                print(f"Found {total_files} files in {dir_path}")
+                logger.info(f"Found {total_files} files in {dir_path}")
 
                 if total_files == 0:
-                    print(f"No CSV files found in {dir_path}")
+                    logger.error(f"No CSV files found in {dir_path}")
                     continue
 
                 with Pool() as p:
@@ -336,7 +336,7 @@ def import_data(years, model, name, **args):
             df.set_index(['serial_number', 'date'], inplace=True)
             df.sort_index(inplace=True)
             df.to_pickle(file)
-            print(f'Data saved to {file}')
+            logger.info(f'Data saved to {file}')
 
     return df
 
@@ -377,10 +377,10 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
         bad_missing_hds = n_missing[n_missing > moving_avg_missing * tolerance].index.tolist()
 
     bad_hds = set(bad_missing_hds + bad_power_hds)
-    print(f"Filter result: bad_missing_hds: {len(bad_missing_hds)}, bad_power_hds: {len(bad_power_hds)}")
+    logger.info(f'Filter result: bad_missing_hds: {len(bad_missing_hds)}, bad_power_hds: {len(bad_power_hds)}')
     hds_remove = len(bad_hds)
     hds_total = len(df.reset_index().serial_number.unique())
-    print('Total HDs: {}    HDs removed: {} ({}%)'.format(hds_total, hds_remove, round(hds_remove / hds_total * 100, 2)))
+    logger.info(f'Total HDs: {hds_total}    HDs removed: {hds_remove} ({round(hds_remove / hds_total * 100, 2)}%)')
 
     bad_hds = pd.Series(list(bad_hds))
     bad_hds = bad_hds[bad_hds.isin(df.index)]
@@ -390,9 +390,9 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
     num_not_fail = len(df.reset_index().serial_number.unique()) - num_fail
     pct_fail = num_fail / (num_not_fail + num_fail) * 100 
 
-    print('{} failed'.format(num_fail))
-    print('{} did not fail'.format(num_not_fail))
-    print('{:5f}% failed'.format(pct_fail))
+    logger.info(f'{num_fail} failed')
+    logger.info(f'{num_not_fail} did not fail')
+    logger.info(f'{pct_fail:.5f}% failed')
     return bad_missing_hds, bad_power_hds, df
 
 def interpolate_ts(df, method='linear'):
@@ -458,7 +458,7 @@ def generate_failure_predictions(df, days, window):
             valid = np.zeros(slicer_val)
         pred_list = np.concatenate((pred_list, predictions))
         valid_list = np.concatenate((valid_list, valid))
-    print('HDs analyzed: {}'.format(i))
+    logger.info(f'HDs analyzed: {i}')
     pred_list = np.asarray(pred_list)
     valid_list = np.asarray(valid_list)
     return df, pred_list, valid_list
@@ -472,21 +472,21 @@ def feature_extraction(X):
 
     :return: ndarray: Extracted features of shape (samples, features, 4).
     """
-    print('Extracting Features')
+    logger.info('Extracting Features')
     samples, features, dim_window = X.shape
     X_feature = np.ndarray((X.shape[0],X.shape[1], 4))
-    print('Sum')
     # sum of all the features
     X_feature[:,:,0] = np.sum((X), axis = 2)
-    print('Min')
+    logger.info(f'Sum: {X_feature[:,:,0]}')
     # min of all the features
     X_feature[:,:,1] = np.min((X), axis = 2)
-    print('Max')
+    logger.info(f'Min: {X_feature[:,:,1]}')
     # max of all the features
     X_feature[:,:,2] = np.max((X), axis = 2)
-    print('Similar slope')
+    logger.info(f'Max: {X_feature[:,:,2]}')
     # Calculate the slope of the features
     X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
+    logger.info(f'Similar slope: {X_feature[:,:,3]}')
     '''
     print('Slope')
     for s in np.arange(samples):
@@ -566,7 +566,7 @@ class DatasetPartitioner:
 
         windowed_df = self.handle_windowing()
 
-        print('Creating training and test dataset')
+        logger.info('Creating training and test dataset')
         return self.split_dataset(windowed_df)
     
     def factors(self, n):
@@ -638,11 +638,11 @@ class DatasetPartitioner:
         try:
             # Step 2.1.1: If Yes, attempt to load the pre-processed windowed dataset.
             windowed_df = pd.read_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
-            print('Loading the windowed dataset')
+            logger.info('Loading the windowed dataset')
             return self.rename_columns(windowed_df)
         except FileNotFoundError:
             # Step 2.1.2: If No, perform windowing on the dataset.
-            print('Windowing the df')
+            logger.info('Windowing the df')
             return self.perform_windowing()
 
     def rename_columns(self, df):
@@ -744,9 +744,6 @@ class DatasetPartitioner:
 
         # Compute the final Dask DataFrame to pandas DataFrame
         final_df = windowed_df.compute()
-        
-        #print('perform_windowing:', self.df.columns)
-
         # Generate the final DataFrame
         final_df.to_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
         return self.rename_columns(final_df)
@@ -778,7 +775,7 @@ class DatasetPartitioner:
                 X = self.arrays_to_matrix(X, data_dim)
             else:
                 X = np.expand_dims(X, axis=1)  # Add an extra dimension
-            print('Augmented data of predict_val is: ', Counter(y))
+            logger.info('Augmented data of predict_val is: ', Counter(y))
             # Print the shapes of the train and test sets
             # Xtrain: ndarray, Xtest: ndarray, ytrain: Series, ytest: Series
             Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
@@ -891,7 +888,7 @@ class DatasetPartitioner:
             # print(f"Dropped {rows_dropped} rows")
             rows_dropped = self.window_dim - 1 if self.overlap == 1 else 2 ** (len(self.factors(self.window_dim)) - 1) - 1
             df = df.iloc[rows_dropped:]
-            print(f"Dropped {rows_dropped} rows")
+            logger.info(f"Dropped {rows_dropped} rows")
         else:
             # Handle NA values with padding
             df.fillna(method=self.fillna_method, inplace=True)
@@ -904,8 +901,7 @@ class DatasetPartitioner:
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
 
-        print('Dropping invalid windows')   
-        # print(df.columns)
+        logger.info('Dropping invalid windows')   
         df.reset_index(inplace=True)
         
         return df
@@ -1050,26 +1046,26 @@ def feature_selection(df, num_features):
     features = []
     dict1 = {}
 
-    print('Number of feature selected for classification:', num_features)
+    logger.info('Number of feature selected for classification:', num_features)
 
     # Step 1.4.2: For each feature in df.columns
     for feature in df.columns:
         # Step 1.4.2.1: if 'raw' in feature Perform T-test
         if 'raw' in feature:
-            print('Feature: {}'.format(feature))
+            logger.info(f'Feature: {feature}')
 
             if feature.replace('raw', 'normalized') in df.columns:
                 # (Not used) Pearson correlation to measure the linear relationship between two variables
                 correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
-                print('Pearson correlation: %.3f' % correlation)
+                logger.info(f'Pearson correlation: {correlation:.3f}')
 
             # T-test to compare the means of two groups of features
             _, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
-            print('T-test p-value: %.3f' % p_val)
+            logger.info(f'T-test p-value: {p_val:.3f}')
 
             dict1[feature] = p_val
 
-    print('Sorting features')
+    logger.info('Sorting features')
 
     # Step 1.4.2.2: Sort the features based on the p-values (item[1] is used to sort the dictionary by its value, and item[0] is used to sort by key)
     features = {k: v for k, v in sorted(dict1.items(), key=lambda item: item[1])}
@@ -1119,7 +1115,7 @@ if __name__ == '__main__':
     logger.info('Data imported successfully, processing smart attributes...')
     for column in list(df):
         missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
-        print('{:.<27}{}%'.format(column, missing))
+        logger.info(f"{column:.<27}{missing}%")
     # drop bad HDs
     
     bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days = 30, time_window='30D', tolerance=2)

@@ -10,6 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import os
 import logger
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
@@ -294,7 +295,7 @@ def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     for m in metric:
         if m in metrics:
             score = metrics[m]()
-            print(f'SCORE {m}: %.3f' % score)
+            logger.info(f'SCORE {m}: {score:.3f}')
             writer.add_scalar(f'SCORE {m}', score, iteration)
     return f1_score(Y_test_real, prediction)
 
@@ -318,7 +319,9 @@ class LSTMTrainer:
         self.lr = lr
         self.penalty = penalty
         self.id_number = id_number
-        self.writer = SummaryWriter('runs/LSTM_Training_Graph')
+        self.train_writer = SummaryWriter('runs/LSTM_Training_Graph')
+        self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        self.test_writer = SummaryWriter('runs/LSTM_Test_Graph')
 
     def FPLSTM_collate(self, batch):
         """
@@ -363,11 +366,12 @@ class LSTMTrainer:
             labels = labels.cuda()  # Move labels to GPU
             self.optimizer.zero_grad()  # Reset gradients from previous iteration
             output = self.model(sequences)  # Forward pass through the model
+            output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
             loss = criterion(output, labels)  # Calculate loss between model output and true labels
             loss.backward()  # Backward pass to calculate gradients
             self.optimizer.step()  # Update model parameters
             # Store the predicted labels for this batch in the predictions array
-            predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :] = output.cpu().detach().numpy()
+            predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :] = output_softmax.cpu().detach().numpy()
             # Store the true labels for this batch in the true_labels array
             true_labels[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = labels.cpu().numpy()
 
@@ -375,29 +379,35 @@ class LSTMTrainer:
                 # Calculate average loss for the last 10 batches
                 avg_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
                 avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
-
+                self.lr = self.optimizer.param_groups[0]['lr']
                 # Log to TensorBoard
-                self.writer.add_scalar('Training Loss', avg_loss, epoch * len(train_loader) + batch_idx)
-                self.writer.add_scalar('Training Accuracy', avg_accuracy, epoch * len(train_loader) + batch_idx)
+                self.train_writer.add_scalar('Training Loss', avg_loss, epoch * len(train_loader) + batch_idx)
+                self.train_writer.add_scalar('Training Accuracy', avg_accuracy, epoch * len(train_loader) + batch_idx)
+                self.train_writer.add_scalar('Learning Rate', self.lr, epoch * len(train_loader) + batch_idx)
 
-                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
+                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
                     epoch, batch_idx * batchsize, Xtrain.shape[0], 
                     (100. * (batch_idx * batchsize) / Xtrain.shape[0]),
-                    avg_loss, avg_accuracy), end="\r")
+                    avg_loss, avg_accuracy, self.lr), end="\r")
 
         avg_train_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
         avg_train_acc = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch)
-        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch)
+        self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
+        self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
 
-        print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, int(avg_train_acc * len(train_loader.dataset)), len(train_loader.dataset), 100. * avg_train_acc))
+        logger.info(
+            f'Train Epoch: {epoch} '
+            f'Avg Loss: {avg_train_loss:.6f} '
+            f'Avg Accuracy: {int(avg_train_acc * len(train_loader.dataset))}/{len(train_loader.dataset)} '
+            f'({100. * avg_train_acc:.0f}%)'
+        )
+        print('\n')
 
         true_labels = true_labels[:((batch_idx + 1) * batchsize)]
         predictions = predictions[:((batch_idx + 1) * batchsize)]
-        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
     def test(self, Xtest, ytest, epoch):
         """
@@ -415,35 +425,40 @@ class LSTMTrainer:
         test_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
         self.model.eval()
         criterion = torch.nn.CrossEntropyLoss()
-        test_preds = torch.as_tensor([]).cuda()
-        test_labels = torch.as_tensor([], dtype=torch.long).cuda()
+        output = torch.as_tensor([]).cuda()
+        labels = torch.as_tensor([], dtype=torch.long).cuda()
 
         with torch.no_grad():
-            test_preds = torch.as_tensor([])
-            test_labels = torch.as_tensor([], dtype=torch.long)
+            output = torch.as_tensor([])
+            labels = torch.as_tensor([], dtype=torch.long)
             for batch_idx, test_data in enumerate(test_loader):
                 sequences, labels = test_data
                 sequences = sequences.cuda()
                 labels = labels.cuda()
-                preds = self.model(sequences)
-                loss = criterion(preds, labels)
-                test_preds = torch.cat((test_preds, preds.cpu()))
-                test_labels = torch.cat((test_labels, labels.cpu()))
+                output = self.model(sequences)
+                output_softmax = F.softmax(output, dim=1)
+                loss = criterion(output, labels)
+                output = torch.cat((output, output_softmax.cpu()))
+                labels = torch.cat((labels, labels.cpu()))
 
         # Calculate metrics
-        test_preds_np = test_preds.cpu().numpy()
-        test_labels_np = test_labels.cpu().numpy()
-        avg_test_loss = log_loss(test_labels_np, test_preds_np, labels=[0, 1])
-        avg_test_acc = accuracy_score(test_labels_np, test_preds_np.argmax(axis=1))
+        output_np = output.cpu().numpy()
+        labels_np = labels.cpu().numpy()
+        avg_test_loss = log_loss(labels_np, output_np, labels=[0, 1])
+        avg_test_acc = accuracy_score(labels_np, output_np.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Test Loss', avg_test_loss, epoch)
-        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, Xtest.shape[0], epoch)
+        self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
+        self.test_writer.add_scalar('Average Accuracy', avg_test_acc, Xtest.shape[0], epoch)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
-            avg_test_loss, avg_test_acc))
+        logger.info(
+            f'Test set: '
+            f'Average loss: {avg_test_loss:.4f}, '
+            f'Accuracy: {avg_test_acc:.4f}'
+        )
+        print('\n')
 
-        report_metrics(test_labels_np, test_preds_np.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        report_metrics(labels_np, output_np.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):
         """
@@ -471,13 +486,14 @@ class LSTMTrainer:
             if i == 5:
                 i = 0
             if F1_list[0] != 0 and (max(F1_list) - min(F1_list)) == 0:
-                print("Exited because last 5 epochs has constant F1")
-            if epoch % 20 == 0:
-                self.lr /= 10
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = self.lr
-        self.writer.close()
-        print('Training completed, saving the model...')
+                logger.info("Exited because last 5 epochs has constant F1")
+            # if epoch % 20 == 0:
+            #     self.lr /= 10
+            #     for param_group in self.optimizer.param_groups:
+            #         param_group['lr'] = self.lr
+        self.train_writer.close()
+        self.test_writer.close()
+        logger.info('Training completed, saving the model...')
 
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         # Create the directory if it doesn't exist
@@ -488,7 +504,7 @@ class LSTMTrainer:
         # Save the model
         model_path = os.path.join(model_dir, f'lstm_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        print('Model saved as:', model_path)
+        logger.info('Model saved as:', model_path)
 
         return model_path
 
@@ -512,7 +528,9 @@ class TCNTrainer:
         self.lr = lr
         self.penalty = penalty
         self.id_number = id_number
-        self.writer = SummaryWriter('runs/TCN_Training_Graph')
+        self.train_writer = SummaryWriter('runs/TCN_Training_Graph')
+        self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        self.test_writer = SummaryWriter('runs/TCN_Test_Graph')
 
     def train(self, Xtrain, ytrain, epoch):
         """
@@ -562,36 +580,45 @@ class TCNTrainer:
             loss.backward()
             # Update the model parameters using the gradients and the optimizer
             self.optimizer.step()
-            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().detach().numpy()
+            # Update the learning rate using the scheduler
+            self.scheduler.step(loss)
+            # Apply softmax to the output to get the predicted probabilities
+            output_softmax = F.softmax(output, dim=1)
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
             true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
-
             if batch_idx > 0 and batch_idx % 10 == 0:
                 # Calculate average loss and accuracy for the last 10 batches
                 avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
                 avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
-
+                self.lr = self.optimizer.param_groups[0]['lr']
                 # Log to TensorBoard
-                self.writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
-                self.writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
+                self.train_writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
+                self.train_writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
+                self.train_writer.add_scalar('Learning Rate', self.lr, epoch * nbatches + batch_idx)
 
                 # Print the training progress to the console
-                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
+                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
                     epoch, batch_idx * self.batch_size, samples,
                     (100. * batch_idx * self.batch_size) / samples,
-                    avg_loss, avg_accuracy), end="\r")
+                    avg_loss, avg_accuracy, self.lr), end="\r")
 
         # Calculate the average loss, accuracy, and ROC AUC over all of the batches
         avg_train_loss = log_loss(true_labels, predictions, labels=[0, 1])
         avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch)
-        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch)
+        self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
+        self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
 
-        print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, int(avg_train_acc * samples), samples, 100. * avg_train_acc))
+        logger.info(
+            f'Train Epoch: {epoch} '
+            f'Avg Loss: {avg_train_loss:.6f} '
+            f'Avg Accuracy: {int(avg_train_acc * samples)}/{samples} '
+            f'({100. * avg_train_acc:.0f}%)'
+        )
+        print('\n')
 
-        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
     def test(self, Xtest, ytest, epoch):
         """
@@ -625,9 +652,10 @@ class TCNTrainer:
 
                 # Forward pass: compute predicted outputs by passing inputs to the model
                 output = self.model(data)
-
+                # Apply softmax to the output to get the predicted probabilities
+                output_softmax = F.softmax(output, dim=1)
                 # Store the predictions and true labels for this batch
-                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().numpy()
+                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().numpy()
                 true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
 
         # Calculate the average loss and accuracy over all of the batches
@@ -635,13 +663,17 @@ class TCNTrainer:
         avg_test_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Test Loss', avg_test_loss, epoch)
-        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, epoch)
+        self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
+        self.test_writer.add_scalar('Average Accuracy', avg_test_acc, epoch)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
-            avg_test_loss, avg_test_acc))
+        logger.info(
+            f'Test set: '
+            f'Average loss: {avg_test_loss:.4f}, '
+            f'Accuracy: {avg_test_acc:.4f}'
+        )
+        print('\n')
 
-        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
         #return predictions.argmax(axis=1)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):
@@ -665,15 +697,16 @@ class TCNTrainer:
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:
-                print("Exited because last 5 epochs has constant F1")
+                logger.info("Exited because last 5 epochs has constant F1")
                 break
 
-            if epoch % 20 == 0:
-                self.lr /= 10
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = self.lr
-        self.writer.close()
-        print('Training completed, saving the model...')
+            # if epoch % 20 == 0:
+            #     self.lr /= 10
+            #     for param_group in self.optimizer.param_groups:
+            #         param_group['lr'] = self.lr
+        self.train_writer.close()
+        self.test_writer.close()
+        logger.info('Training completed, saving the model...')
 
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         # Create the directory if it doesn't exist
@@ -684,7 +717,7 @@ class TCNTrainer:
         # Save the model
         model_path = os.path.join(model_dir, f'tcn_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        print('Model saved as:', model_path)
+        logger.info('Model saved as:', model_path)
 
 class MLPTrainer:
     def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
@@ -706,7 +739,9 @@ class MLPTrainer:
         self.lr = lr
         self.penalty = penalty
         self.id_number = id_number
-        self.writer = SummaryWriter('runs/MLP_Training_Graph')
+        self.train_writer = SummaryWriter('runs/MLP_Training_Graph')
+        self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        self.test_writer = SummaryWriter('runs/MLP_Test_Graph')
 
     def train(self, Xtrain, ytrain, epoch):
         """
@@ -742,32 +777,42 @@ class MLPTrainer:
 
             self.optimizer.zero_grad()
             output = self.model(data)
+            output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
             loss = criterion(output, target.long())
             loss.backward()
             self.optimizer.step()
-            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().detach().numpy()
+            self.scheduler.step(loss)   # Update the learning rate using the scheduler
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
             true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
 
             if batch_idx > 0 and batch_idx % 10 == 0:
                 avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
                 avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
-                self.writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
-                self.writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
-                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f}'.format(
+                self.lr = self.optimizer.param_groups[0]['lr']
+                self.train_writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
+                self.train_writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
+                self.train_writer.add_scalar('Learning Rate', self.lr, epoch * nbatches + batch_idx)
+                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
                     epoch,
                     batch_idx * self.batch_size,
                     samples,
                     (100. * batch_idx * self.batch_size) / samples,
                     avg_loss,
-                    avg_accuracy), end="\r")
+                    avg_accuracy,
+                    self.lr), end="\r")
 
         avg_train_loss = log_loss(true_labels, predictions, labels=[0, 1])
         avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
-        self.writer.add_scalar('Average Training Loss', avg_train_loss, epoch)
-        self.writer.add_scalar('Average Training Accuracy', avg_train_acc, epoch)
-        print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, int(avg_train_acc * samples), samples, 100. * avg_train_acc))
-        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
+        self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
+        logger.info(
+            f'Train Epoch: {epoch} '
+            f'Avg Loss: {avg_train_loss:.6f} '
+            f'Avg Accuracy: {int(avg_train_acc * samples)}/{samples} '
+            f'({100. * avg_train_acc:.0f}%)'
+        )
+        print('\n')
+        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
     def test(self, Xtest, ytest, epoch):
         """
@@ -798,8 +843,9 @@ class MLPTrainer:
                     data, target = torch.Tensor(data), torch.Tensor(target)
 
                 output = self.model(data)
-                test_loss = criterion(output, target.long()).item()
-                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output.cpu().detach().numpy()
+                output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
+                loss = criterion(output, target.long()).item()
+                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
                 true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
 
         # Calculate the average loss and accuracy over all of the batches
@@ -807,12 +853,16 @@ class MLPTrainer:
         avg_test_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
 
         # Log to TensorBoard
-        self.writer.add_scalar('Average Test Loss', avg_test_loss, epoch)
-        self.writer.add_scalar('Average Test Accuracy', avg_test_acc, epoch)
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
-            avg_test_loss, avg_test_acc))
+        self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
+        self.test_writer.add_scalar('Average Accuracy', avg_test_acc, epoch)
+        logger.info(
+            f'Test set: '
+            f'Average loss: {avg_test_loss:.4f}, '
+            f'Accuracy: {avg_test_acc:.4f}'
+        )
+        print('\n')
 
-        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.writer, epoch)
+        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
         #return predictions.argmax(axis=1)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):
@@ -832,15 +882,16 @@ class MLPTrainer:
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:
-                print("Exited because last 5 epochs has constant F1")
+                logger.info("Exited because last 5 epochs has constant F1")
                 break
 
-            if epoch % 20 == 0:
-                self.lr /= 10
-                for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = self.lr
-        self.writer.close()
-        print('Training completed, saving the model...')
+            # if epoch % 20 == 0:
+            #     self.lr /= 10
+            #     for param_group in self.optimizer.param_groups:
+            #         param_group['lr'] = self.lr
+        self.train_writer.close()
+        self.test_writer.close()
+        logger.info('Training completed, saving the model...')
 
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         if not os.path.exists(model_dir):
@@ -848,4 +899,4 @@ class MLPTrainer:
         now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_path = os.path.join(model_dir, f'mlp_manual_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        print('Model saved as:', model_path)
+        logger.info('Model saved as:', model_path)
