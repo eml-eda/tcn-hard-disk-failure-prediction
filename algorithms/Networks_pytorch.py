@@ -295,7 +295,7 @@ def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     for m in metric:
         if m in metrics:
             score = metrics[m]()
-            print(f'SCORE {m}: %.3f' % score)
+            logger.info(f'SCORE {m}: {score:.3f}')
             writer.add_scalar(f'SCORE {m}', score, iteration)
     return f1_score(Y_test_real, prediction)
 
@@ -388,7 +388,7 @@ class LSTMTrainer:
                 print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
                     epoch, batch_idx * batchsize, Xtrain.shape[0], 
                     (100. * (batch_idx * batchsize) / Xtrain.shape[0]),
-                    avg_loss, avg_accuracy), end="\r")
+                    avg_loss, avg_accuracy, self.lr), end="\r")
 
         avg_train_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
         avg_train_acc = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
@@ -397,8 +397,13 @@ class LSTMTrainer:
         self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
         self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
 
-        print('Train Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, int(avg_train_acc * len(train_loader.dataset)), len(train_loader.dataset), 100. * avg_train_acc))
+        logger.info(
+            f'Train Epoch: {epoch} '
+            f'Avg Loss: {avg_train_loss:.6f} '
+            f'Avg Accuracy: {int(avg_train_acc * len(train_loader.dataset))}/{len(train_loader.dataset)} '
+            f'({100. * avg_train_acc:.0f}%)'
+        )
+        print('\n')
 
         true_labels = true_labels[:((batch_idx + 1) * batchsize)]
         predictions = predictions[:((batch_idx + 1) * batchsize)]
@@ -446,8 +451,12 @@ class LSTMTrainer:
         self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
         self.test_writer.add_scalar('Average Accuracy', avg_test_acc, Xtest.shape[0], epoch)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
-            avg_test_loss, avg_test_acc))
+        logger.info(
+            f'Test set: '
+            f'Average loss: {avg_test_loss:.4f}, '
+            f'Accuracy: {avg_test_acc:.4f}'
+        )
+        print('\n')
 
         report_metrics(labels_np, output_np.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
 
@@ -477,14 +486,14 @@ class LSTMTrainer:
             if i == 5:
                 i = 0
             if F1_list[0] != 0 and (max(F1_list) - min(F1_list)) == 0:
-                print("Exited because last 5 epochs has constant F1")
+                logger.info("Exited because last 5 epochs has constant F1")
             # if epoch % 20 == 0:
             #     self.lr /= 10
             #     for param_group in self.optimizer.param_groups:
             #         param_group['lr'] = self.lr
         self.train_writer.close()
         self.test_writer.close()
-        print('Training completed, saving the model...')
+        logger.info('Training completed, saving the model...')
 
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         # Create the directory if it doesn't exist
@@ -495,7 +504,7 @@ class LSTMTrainer:
         # Save the model
         model_path = os.path.join(model_dir, f'lstm_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        print('Model saved as:', model_path)
+        logger.info('Model saved as:', model_path)
 
         return model_path
 
@@ -601,8 +610,13 @@ class TCNTrainer:
         self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
         self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
 
-        print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, int(avg_train_acc * samples), samples, 100. * avg_train_acc))
+        logger.info(
+            f'Train Epoch: {epoch} '
+            f'Avg Loss: {avg_train_loss:.6f} '
+            f'Avg Accuracy: {int(avg_train_acc * samples)}/{samples} '
+            f'({100. * avg_train_acc:.0f}%)'
+        )
+        print('\n')
 
         return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
@@ -652,8 +666,12 @@ class TCNTrainer:
         self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
         self.test_writer.add_scalar('Average Accuracy', avg_test_acc, epoch)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
-            avg_test_loss, avg_test_acc))
+        logger.info(
+            f'Test set: '
+            f'Average loss: {avg_test_loss:.4f}, '
+            f'Accuracy: {avg_test_acc:.4f}'
+        )
+        print('\n')
 
         report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
         #return predictions.argmax(axis=1)
@@ -679,7 +697,7 @@ class TCNTrainer:
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:
-                print("Exited because last 5 epochs has constant F1")
+                logger.info("Exited because last 5 epochs has constant F1")
                 break
 
             # if epoch % 20 == 0:
@@ -688,7 +706,7 @@ class TCNTrainer:
             #         param_group['lr'] = self.lr
         self.train_writer.close()
         self.test_writer.close()
-        print('Training completed, saving the model...')
+        logger.info('Training completed, saving the model...')
 
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         # Create the directory if it doesn't exist
@@ -699,7 +717,7 @@ class TCNTrainer:
         # Save the model
         model_path = os.path.join(model_dir, f'tcn_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        print('Model saved as:', model_path)
+        logger.info('Model saved as:', model_path)
 
 class MLPTrainer:
     def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
@@ -787,8 +805,13 @@ class MLPTrainer:
         avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
         self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
         self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
-        print('\nTrain Epoch: {} Avg Loss: {:.6f} Avg Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, avg_train_loss, int(avg_train_acc * samples), samples, 100. * avg_train_acc))
+        logger.info(
+            f'Train Epoch: {epoch} '
+            f'Avg Loss: {avg_train_loss:.6f} '
+            f'Avg Accuracy: {int(avg_train_acc * samples)}/{samples} '
+            f'({100. * avg_train_acc:.0f}%)'
+        )
+        print('\n')
         return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
     def test(self, Xtest, ytest, epoch):
@@ -832,8 +855,12 @@ class MLPTrainer:
         # Log to TensorBoard
         self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
         self.test_writer.add_scalar('Average Accuracy', avg_test_acc, epoch)
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {:.4f}\n'.format(
-            avg_test_loss, avg_test_acc))
+        logger.info(
+            f'Test set: '
+            f'Average loss: {avg_test_loss:.4f}, '
+            f'Accuracy: {avg_test_acc:.4f}'
+        )
+        print('\n')
 
         report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
         #return predictions.argmax(axis=1)
@@ -855,7 +882,7 @@ class MLPTrainer:
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:
-                print("Exited because last 5 epochs has constant F1")
+                logger.info("Exited because last 5 epochs has constant F1")
                 break
 
             # if epoch % 20 == 0:
@@ -864,7 +891,7 @@ class MLPTrainer:
             #         param_group['lr'] = self.lr
         self.train_writer.close()
         self.test_writer.close()
-        print('Training completed, saving the model...')
+        logger.info('Training completed, saving the model...')
 
         model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
         if not os.path.exists(model_dir):
@@ -872,4 +899,4 @@ class MLPTrainer:
         now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_path = os.path.join(model_dir, f'mlp_manual_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        print('Model saved as:', model_path)
+        logger.info('Model saved as:', model_path)
