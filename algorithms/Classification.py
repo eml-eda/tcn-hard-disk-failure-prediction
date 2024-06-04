@@ -37,6 +37,7 @@ TRAINING_PARAMS = {
     'lstm_hidden_s': 64,  # LSTM
     'fc1_hidden_s': 16,  # LSTM
     'hidden_dim': 128,  # MLP_Manual
+    'optimizer_type': 'Adam',
 }
 
 def save_best_params_to_json(best_params, classifier_name, id_number):
@@ -58,7 +59,7 @@ def save_best_params_to_json(best_params, classifier_name, id_number):
         os.makedirs(param_dir)
 
     # Define the file path
-    file_path = os.path.join(param_dir, f'{classifier_name}_{id_number}_best_params.json')
+    file_path = os.path.join(param_dir, f'{classifier_name.lower()}_{id_number}_best_params.json')
 
     # Save the best parameters to a JSON file
     with open(file_path, 'w') as f:
@@ -81,7 +82,7 @@ def load_best_params_from_json(classifier_name, id_number):
     param_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
 
     # Define the file path
-    file_path = os.path.join(param_dir, f'{classifier_name}_{id_number}_best_params.json')
+    file_path = os.path.join(param_dir, f'{classifier_name.lower()}_{id_number}_best_params.json')
 
     # Load the best parameters from a JSON file
     with open(file_path, 'r') as f:
@@ -604,6 +605,7 @@ def set_training_params(*args):
         'lr': args['lr'],
         'weight_decay': args['weight_decay'],
         'epochs': args['epochs'],
+        'optimizer_type': args['optimizer_type'],
         'dropout': args['dropout'],  # LSTM
         'lstm_hidden_s': args['lstm_hidden_s'],  # LSTM
         'fc1_hidden_s': args['fc1_hidden_s'],  # LSTM
@@ -804,8 +806,14 @@ def initialize_classification(*args):
             net.cuda()
         else:
             logger.info('Model to cpu')
-        # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        if optimizer_type == 'Adam':
+            # We use the Adam optimizer, a method for Stochastic Optimization
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            # We use the Stochastic Gradient Descent optimizer
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -831,6 +839,7 @@ def initialize_classification(*args):
         lstm_hidden_s = TRAINING_PARAMS['lstm_hidden_s']
         # The dimensionality of the output space of the first fully connected layer
         fc1_hidden_s = TRAINING_PARAMS['fc1_hidden_s']
+        optimizer_type = TRAINING_PARAMS['optimizer_type']
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
         if torch.cuda.is_available():
@@ -838,8 +847,14 @@ def initialize_classification(*args):
             net.cuda()
         else:
             logger.info('Model to cpu')
-        # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        if optimizer_type == 'Adam':
+            # We use the Adam optimizer, a method for Stochastic Optimization
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            # We use the Stochastic Gradient Descent optimizer
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -872,8 +887,14 @@ def initialize_classification(*args):
             net.cuda()
         else:
             logger.info('Model to cpu')
-        # We use the Adam optimizer, a method for Stochastic Optimization
-        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        if optimizer_type == 'Adam':
+            # We use the Adam optimizer, a method for Stochastic Optimization
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            # We use the Stochastic Gradient Descent optimizer
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
