@@ -585,7 +585,7 @@ def save_params_to_json(df, *args):
     logger.info(f'User parameters: {params}')
 
     # Define the file path
-    file_path = os.path.join(param_dir, f'{params['classifier'].lower()}_{params['id_number']}_params_{now_str}.json')
+    file_path = os.path.join(param_dir, f"{params['classifier'].lower()}_{params['id_number']}_params_{now_str}.json")
 
     # Write the params dictionary to a JSON file
     with open(file_path, 'w') as f:

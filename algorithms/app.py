@@ -39,7 +39,7 @@ training_param_iface = gr.Interface(
     inputs=[
         gr.Dropdown(choices=[0, 1], value=1, label='Penalty', info='Select the penalty for training.'),
         gr.Slider(minimum=64, maximum=512, step=1, value=256, label='Batch Size', info='Size of the batch for training.'),
-        gr.Slider(minimum=0.001, maximum=0.010, step=0.001, value=0.001, label='Learning Rate', info='Learning rate for training.'),
+        gr.Slider(minimum=0.001, maximum=0.010, step=0.001, value=0.001, label='Learning Rate', info='Initial learning rate for training.'),
         gr.Slider(minimum=0.001, maximum=0.010, step=0.001, value=0.010, label='L2 Weight Decay', info='L2 weight decay for training.'),
         gr.Slider(minimum=50, maximum=500, step=1, value=200, label='Epochs', info='Number of epochs for training.'),
         gr.Slider(minimum=0.05, maximum=0.5, step=0.01, value=0.1, label='Dropout', info='Dropout rate for training.'),
