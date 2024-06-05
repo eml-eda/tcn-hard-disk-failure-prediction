@@ -348,6 +348,7 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
     logger.info(f'{num_fail} failed')
     logger.info(f'{num_not_fail} did not fail')
     logger.info(f'{pct_fail:.5f}% failed')
+    # Print on 
     return bad_missing_hds, bad_power_hds, df
 
 def interpolate_ts(df, method='linear'):

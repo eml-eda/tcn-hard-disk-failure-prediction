@@ -49,7 +49,7 @@ training_param_iface = gr.Interface(
         gr.Slider(minimum=16, maximum=128, step=1, value=128, label='MLP Hidden Dimension', info='MLP hidden dimension for training.'),
         gr.Dropdown(choices=['Adam', 'SGD'], value='Adam', label='Optimizer', info='Select the optimizer for training.'),
     ],
-    outputs=None,
+    outputs=gr.Textbox(placeholder="See updated parameters below.", label="Updated Parameters"),
     description="Training Parameters for Predicting System Failures using Machine Learning Techniques",  # Description of the interface
 )
 
