@@ -14,7 +14,6 @@ import scipy.stats
 import re
 import dask.dataframe as dd
 from collections import Counter
-from multiprocessing import Pool, Manager, Lock
 import logger
 
 
@@ -244,39 +243,6 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
 
     return dataset
 
-def process_file(f, progress_list, args, name, all_data, total_files, model):
-    """
-    Process a file, update the progress, and return the data.
-
-    Parameters:
-    - f: str - The file path.
-    - progress_list: multiprocessing.Value - A shared value to track progress.
-    - args: dict - A dictionary of arguments.
-    - name: str - The name of the feature.
-    - all_data: list - A list to store all the data.
-    - total_files: int - The total number of files to process.
-    - model: str - The model number.
-
-    Returns:
-    - data: pandas.DataFrame - The processed data.
-    """
-    lock = Lock()
-    if 'features' in args and name in args['features']:
-        data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
-    else:
-        data = pd.read_csv(f, header=0, parse_dates=['date'])
-    
-    data = data[data.model == model].copy()
-    data.failure = data.failure.astype('int')
-    
-    with lock:
-        progress_list.value += 1
-        all_data.append(data)
-        progress_percentage = (progress_list.value / total_files) * 100
-        print(f'Progress: {progress_percentage:.2f}%', end="\r")
-
-    return data
-
 def import_data(years, model, name, **args):
     """ Import hard drive data from csvs on disk.
     
@@ -305,38 +271,28 @@ def import_data(years, model, name, **args):
         logger.info(f'Data loaded from {file}')
     except FileNotFoundError:
         logger.info('Creating new DataFrame from CSV files.')
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        all_data = []
 
-        with Manager() as manager:
-            all_data = manager.list()
-            progress_list = manager.Value('i', 0)
+        for y in years:
+            print(f'Analyzing year {y}', end="\r")
+            # Fix the directory name
+            for f in glob.glob(os.path.join(script_dir, '..', 'HDD_dataset', y, '*.csv')):
+                try:
+                    data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
+                except ValueError:
+                    data = pd.read_csv(f, header=0, parse_dates=['date'])
 
-            for y in years:
-                print('\n')
-                logger.info(f'Processing year: {y}')
-                dir_path = os.path.join(script_dir, '..', 'HDD_dataset', y)
-                if not os.path.exists(dir_path):
-                    logger.error(f"Error: Directory {dir_path} does not exist.")
-                    continue
-                files = glob.glob(os.path.join(dir_path, '*.csv'))
-                total_files = len(files)
-                logger.info(f"Found {total_files} files in {dir_path}")
+                data = data[data.model == model].copy()
+                data.drop(columns=['model'], inplace=True)
+                data.failure = data.failure.astype('int')
+                all_data.append(data)
 
-                if total_files == 0:
-                    logger.error(f"No CSV files found in {dir_path}")
-                    continue
-
-                with Pool() as p:
-                    p.starmap(
-                        func=process_file,
-                        iterable=[(f, progress_list, args, name, all_data, total_files, model) for f in files]
-                    )
-
-            all_data = list(all_data)  # Convert managed list back to a regular list
-            df = pd.concat(all_data, ignore_index=True)
-            df.set_index(['serial_number', 'date'], inplace=True)
-            df.sort_index(inplace=True)
-            df.to_pickle(file)
-            logger.info(f'Data saved to {file}')
+        df = pd.concat(all_data, ignore_index=True)
+        df.set_index(['serial_number', 'date'], inplace=True)
+        df.sort_index(inplace=True)
+        df.to_pickle(file)
+        logger.info(f'Data saved to {file}')
 
     return df
 
