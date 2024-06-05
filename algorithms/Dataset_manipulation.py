@@ -271,10 +271,9 @@ def process_file(f, progress_list, args, name, all_data, total_files, model):
     
     with lock:
         progress_list.value += 1
-
-    all_data.append(data)
-    progress_percentage = (progress_list.value / total_files) * 100
-    print(f'Progress: {progress_percentage:.2f}%', end="\r")
+        all_data.append(data)
+        progress_percentage = (progress_list.value / total_files) * 100
+        print(f'Progress: {progress_percentage:.2f}%', end="\r")
 
     return data
 
@@ -312,7 +311,8 @@ def import_data(years, model, name, **args):
             progress_list = manager.Value('i', 0)
 
             for y in years:
-                logger.info('\nProcessing year:', y)
+                print('\n')
+                logger.info(f'Processing year: {y}')
                 dir_path = os.path.join(script_dir, '..', 'HDD_dataset', y)
                 if not os.path.exists(dir_path):
                     logger.error(f"Error: Directory {dir_path} does not exist.")
@@ -775,7 +775,7 @@ class DatasetPartitioner:
                 X = self.arrays_to_matrix(X, data_dim)
             else:
                 X = np.expand_dims(X, axis=1)  # Add an extra dimension
-            logger.info('Augmented data of predict_val is: ', Counter(y))
+            logger.info(f'Augmented data of predict_val is: {Counter(y)}')
             # Print the shapes of the train and test sets
             # Xtrain: ndarray, Xtest: ndarray, ytrain: Series, ytest: Series
             Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, stratify=y, test_size=self.test_train_perc, random_state=42)
@@ -1046,7 +1046,7 @@ def feature_selection(df, num_features):
     features = []
     dict1 = {}
 
-    logger.info('Number of feature selected for classification:', num_features)
+    logger.info(f'Number of feature selected for classification: {num_features}')
 
     # Step 1.4.2: For each feature in df.columns
     for feature in df.columns:

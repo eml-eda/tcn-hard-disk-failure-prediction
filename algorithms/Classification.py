@@ -28,7 +28,7 @@ import logger
 
 # Define default global values
 TRAINING_PARAMS = {
-    'penalty': 1,
+    'reg': 0.1,
     'batch_size': 256,
     'lr': 0.001,
     'weight_decay': 0.01,
@@ -448,7 +448,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
-            penalty=args['penalty'],                # Regularization penalty
+            reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
@@ -461,7 +461,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
-            penalty=args['penalty'],                # Regularization penalty
+            reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number']
         )
         # Run training and testing using the TCNTrainer
@@ -475,7 +475,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
-            penalty=args['penalty'],                # Regularization penalty
+            reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number']
         )
         # Run training and testing using the MLPTrainer
@@ -600,7 +600,7 @@ def set_training_params(*args):
     # Use the global keyword when modifying global variables
     global TRAINING_PARAMS
     TRAINING_PARAMS = {
-        'penalty': args['penalty'],
+        'reg': args['reg'],
         'batch_size': args['batch_size'],
         'lr': args['lr'],
         'weight_decay': args['weight_decay'],
@@ -722,7 +722,7 @@ def initialize_classification(*args):
         logger.info('Data imported successfully, processing smart attributes...')
         for column in list(df):
             missing = round(df[column].notna().sum() / df.shape[0] * 100, 2)
-            logger.info('{:.<27}{}%'.format(column, missing))
+            logger.info(f"{column:<27}.{missing}%")
         # Step 1.2: Filter out the bad HDDs.
         bad_missing_hds, bad_power_hds, df = filter_HDs_out(df, min_days=min_days_HDD, time_window='30D', tolerance=2)
         # predict_val represents the prediction value of the failure
@@ -739,7 +739,7 @@ def initialize_classification(*args):
             df = feature_selection(df, num_features)
         logger.info('Used features')
         for column in list(df):
-            logger.info('{:.<27}'.format(column,))
+            logger.info(f'{column:<27}.')
         logger.info(f'Saving to pickle file: {model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
 
         output_dir = os.path.join(script_dir, '..', 'output')
@@ -787,11 +787,12 @@ def initialize_classification(*args):
     os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
     if classifier == 'TCN':
         # Step 1.6.1: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
-        penalty = TRAINING_PARAMS['penalty']
         batch_size = TRAINING_PARAMS['batch_size']
         lr = TRAINING_PARAMS['lr']
         weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
         epochs = TRAINING_PARAMS['epochs']
+        optimizer_type = TRAINING_PARAMS['optimizer_type']
+        reg = TRAINING_PARAMS['reg']
         num_inputs = Xtrain.shape[1]
         # Calculate the data dimension based on the history signal and overlap.
         if windowing == 1:
@@ -817,18 +818,17 @@ def initialize_classification(*args):
 
         # Define the best parameters
         best_params = {
-            'penalty': penalty,
             'batch_size': batch_size,
             'lr': lr,
             'weight_decay': weight_decay,
             'epochs': epochs,
+            'reg': reg,
         }
 
         # Save the best parameters to a JSON file
         save_best_params_to_json(best_params, classifier, id_number)
     elif classifier == 'LSTM':
         # Step 1.6.2: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
-        penalty = TRAINING_PARAMS['penalty']
         lr = TRAINING_PARAMS['lr']
         weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
         batch_size = TRAINING_PARAMS['batch_size']
@@ -840,6 +840,7 @@ def initialize_classification(*args):
         # The dimensionality of the output space of the first fully connected layer
         fc1_hidden_s = TRAINING_PARAMS['fc1_hidden_s']
         optimizer_type = TRAINING_PARAMS['optimizer_type']
+        reg = TRAINING_PARAMS['reg']
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
         if torch.cuda.is_available():
@@ -858,7 +859,6 @@ def initialize_classification(*args):
 
         # Define the best parameters
         best_params = {
-            'penalty': penalty,
             'batch_size': batch_size,
             'lr': lr,
             'weight_decay': weight_decay,
@@ -866,20 +866,21 @@ def initialize_classification(*args):
             'dropout': dropout,
             'lstm_hidden_s': lstm_hidden_s,
             'fc1_hidden_s': fc1_hidden_s,
+            'reg': reg,
         }
 
         # Save the best parameters to a JSON file
         save_best_params_to_json(best_params, classifier, id_number)
     elif classifier == 'MLP_Manual':
         # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
-        penalty = TRAINING_PARAMS['penalty']
         batch_size = TRAINING_PARAMS['batch_size']
         lr = TRAINING_PARAMS['lr']
         weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
         epochs = TRAINING_PARAMS['epochs']
         input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
         hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
-
+        optimizer_type = TRAINING_PARAMS['optimizer_type']
+        reg = TRAINING_PARAMS['reg']
         logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
         net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
         if torch.cuda.is_available():
@@ -898,12 +899,12 @@ def initialize_classification(*args):
 
         # Define the best parameters
         best_params = {
-            'penalty': penalty,
             'batch_size': batch_size,
             'lr': lr,
             'weight_decay': weight_decay,
             'epochs': epochs,
             'hidden_dim': hidden_dim,
+            'reg': reg,
         }
 
         # Save the best parameters to a JSON file
@@ -948,7 +949,7 @@ def initialize_classification(*args):
             epochs=epochs,
             batch_size=batch_size,
             lr=lr,
-            penalty=penalty,
+            reg=reg,
             id_number=id_number
         )
     except:

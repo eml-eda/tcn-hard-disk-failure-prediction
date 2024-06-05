@@ -11,6 +11,7 @@ from datetime import datetime
 import os
 import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.autograd import grad
 
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
@@ -300,7 +301,7 @@ def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     return f1_score(Y_test_real, prediction)
 
 class LSTMTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number):
         """
         Initialize the LSTMModelTrainer with all necessary components.
 
@@ -310,6 +311,7 @@ class LSTMTrainer:
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Learning rate for the optimizer.
+            reg (float): Regularization factor.
             id_number (int): The ID number of the model.
         """
         self.model = model
@@ -317,7 +319,7 @@ class LSTMTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
-        self.penalty = penalty
+        self.reg = reg
         self.id_number = id_number
         self.train_writer = SummaryWriter('runs/LSTM_Training_Graph')
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
@@ -337,6 +339,23 @@ class LSTMTrainer:
         x_batch = torch.stack(xx).permute(1, 0, 2)
         y_batch = torch.stack(yy)
         return (x_batch, y_batch)
+
+    # Function to calculate the total loss combining error and penalty terms
+    def calculate_total_loss(self, error, reg):
+        """
+        Calculates the total loss for the model.
+
+        Parameters:
+        - error: The error term representing the model's prediction error.
+        - reg: The regularization parameter.
+
+        Returns:
+        - total_loss: The total loss, which is a combination of the prediction error and regularization penalty.
+        """
+        grads = grad(error, self.model.parameters(), create_graph=True)
+        penalty = sum(g.pow(2).mean() for g in grads)
+        total_loss = reg * error + (1 - reg) * penalty
+        return total_loss
 
     def train(self, Xtrain, ytrain, epoch):
         """
@@ -368,7 +387,9 @@ class LSTMTrainer:
             output = self.model(sequences)  # Forward pass through the model
             output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
             loss = criterion(output, labels)  # Calculate loss between model output and true labels
-            loss.backward()  # Backward pass to calculate gradients
+            # Calculate the total loss (error + penalty)
+            total_loss = self.calculate_total_loss(loss, self.reg)
+            total_loss.backward()  # Backward pass to calculate gradients
             self.optimizer.step()  # Update model parameters
             # Store the predicted labels for this batch in the predictions array
             predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :] = output_softmax.cpu().detach().numpy()
@@ -509,7 +530,7 @@ class LSTMTrainer:
         return model_path
 
 class TCNTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number):
         """
         Initialize the TCNTrainer with all necessary components for training and testing.
 
@@ -519,6 +540,7 @@ class TCNTrainer:
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Initial learning rate.
+            reg (float): Regularization factor.
             id_number (int): The ID number of the model.
         """
         self.model = model
@@ -526,11 +548,28 @@ class TCNTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
-        self.penalty = penalty
+        self.reg = reg
         self.id_number = id_number
         self.train_writer = SummaryWriter('runs/TCN_Training_Graph')
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         self.test_writer = SummaryWriter('runs/TCN_Test_Graph')
+
+    # Function to calculate the total loss combining error and penalty terms
+    def calculate_total_loss(self, error, reg):
+        """
+        Calculates the total loss for the model.
+
+        Parameters:
+        - error: The error term representing the model's prediction error.
+        - reg: The regularization parameter.
+
+        Returns:
+        - total_loss: The total loss, which is a combination of the prediction error and regularization penalty.
+        """
+        grads = grad(error, self.model.parameters(), create_graph=True)
+        penalty = sum(g.pow(2).mean() for g in grads)
+        total_loss = reg * error + (1 - reg) * penalty
+        return total_loss
 
     def train(self, Xtrain, ytrain, epoch):
         """
@@ -576,8 +615,10 @@ class TCNTrainer:
             output = self.model(data)
             # Calculate the loss between the predictions and the target
             loss = criterion(output, target.long())
+            # Calculate the total loss (error + penalty)
+            total_loss = self.calculate_total_loss(loss, self.reg)
             # Perform backpropagation to calculate the gradients of the loss with respect to the model parameters
-            loss.backward()
+            total_loss.backward()
             # Update the model parameters using the gradients and the optimizer
             self.optimizer.step()
             # Update the learning rate using the scheduler
@@ -720,7 +761,7 @@ class TCNTrainer:
         logger.info('Model saved as:', model_path)
 
 class MLPTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, penalty, id_number):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number):
         """
         Initialize the MLPTrainer with all necessary components for training and testing.
 
@@ -730,6 +771,7 @@ class MLPTrainer:
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Initial learning rate.
+            reg (float): Regularization factor.
             id_number (int): The ID number of the model.
         """
         self.model = model
@@ -737,11 +779,27 @@ class MLPTrainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.lr = lr
-        self.penalty = penalty
+        self.reg = reg
         self.id_number = id_number
         self.train_writer = SummaryWriter('runs/MLP_Training_Graph')
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         self.test_writer = SummaryWriter('runs/MLP_Test_Graph')
+
+    def calculate_total_loss(self, error, reg):
+        """
+        Calculates the total loss for the model.
+
+        Parameters:
+        - error: The error term representing the model's prediction error.
+        - reg: The regularization parameter.
+
+        Returns:
+        - total_loss: The total loss, which is a combination of the prediction error and regularization penalty.
+        """
+        grads = grad(error, self.model.parameters(), create_graph=True)
+        penalty = sum(g.pow(2).mean() for g in grads)
+        total_loss = reg * error + (1 - reg) * penalty
+        return total_loss
 
     def train(self, Xtrain, ytrain, epoch):
         """
@@ -779,7 +837,9 @@ class MLPTrainer:
             output = self.model(data)
             output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
             loss = criterion(output, target.long())
-            loss.backward()
+            # Calculate the total loss (error + penalty)
+            total_loss = self.calculate_total_loss(loss, self.reg)
+            total_loss.backward()  # Backward pass to calculate gradients
             self.optimizer.step()
             self.scheduler.step(loss)   # Update the learning rate using the scheduler
             predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()

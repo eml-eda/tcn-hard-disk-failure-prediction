@@ -37,7 +37,7 @@ main_iface = gr.Interface(
 training_param_iface = gr.Interface(
     fn=set_training_params,
     inputs=[
-        gr.Dropdown(choices=[0, 1], value=1, label='Penalty', info='Select the penalty for training.'),
+        gr.Slider(minimum=0, maximum=1, step=0.1, value=0.1, label='Regularization', info='Regularization factor for training. (Set 1 to disable the penalty)'),
         gr.Slider(minimum=64, maximum=512, step=1, value=256, label='Batch Size', info='Size of the batch for training.'),
         gr.Slider(minimum=0.001, maximum=0.010, step=0.001, value=0.001, label='Learning Rate', info='Initial learning rate for training.'),
         gr.Slider(minimum=0.000, maximum=0.010, step=0.001, value=0.005, label='L2 Weight Decay', info='L2 weight decay for training.'),
