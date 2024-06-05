@@ -15,6 +15,7 @@ import re
 import dask.dataframe as dd
 from collections import Counter
 import logger
+from tqdm import tqdm
 
 
 def plot_feature(dataset):
@@ -274,17 +275,15 @@ def import_data(years, model, name, **args):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         all_data = []
 
-        for y in years:
-            print(f'Analyzing year {y}', end="\r")
+        for y in tqdm(years, desc="Analyzing years"):
             # Fix the directory name
-            for f in glob.glob(os.path.join(script_dir, '..', 'HDD_dataset', y, '*.csv')):
-                try:
+            for f in tqdm(glob.glob(os.path.join(script_dir, '..', 'HDD_dataset', y, '*.csv')), desc=f"Analyzing files in year {y}"):
+                if 'features' in args and name in args['features']:
                     data = pd.read_csv(f, header=0, usecols=args['features'][name], parse_dates=['date'])
-                except ValueError:
+                else:
                     data = pd.read_csv(f, header=0, parse_dates=['date'])
 
                 data = data[data.model == model].copy()
-                data.drop(columns=['model'], inplace=True)
                 data.failure = data.failure.astype('int')
                 all_data.append(data)
 
