@@ -596,36 +596,11 @@ def save_params_to_json(df, *args):
 
     return file_path
 
-# def set_training_params(*args):
-#     # Use the global keyword when modifying global variables
-#     global TRAINING_PARAMS
-#     TRAINING_PARAMS = {
-#         'reg': args['reg'],
-#         'batch_size': args['batch_size'],
-#         'lr': args['lr'],
-#         'weight_decay': args['weight_decay'],
-#         'epochs': args['epochs'],
-#         'optimizer_type': args['optimizer_type'],
-#         'dropout': args['dropout'],  # LSTM
-#         'lstm_hidden_s': args['lstm_hidden_s'],  # LSTM
-#         'fc1_hidden_s': args['fc1_hidden_s'],  # LSTM
-#         'hidden_dim': args['hidden_dim'],  # MLP_Manual
-#     }
-
-def set_training_params(reg, batch_size, lr, weight_decay, epochs, dropout, lstm_hidden_s, fc1_hidden_s, hidden_dim, optimizer_type):
+def set_training_params(*args):
+    param_names = ['reg', 'batch_size', 'lr', 'weight_decay', 'epochs', 'dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'optimizer_type']
+    # Use the global keyword when modifying global variables
     global TRAINING_PARAMS
-    TRAINING_PARAMS = {
-        'reg': reg,
-        'batch_size': batch_size,
-        'lr': lr,
-        'weight_decay': weight_decay,
-        'epochs': epochs,
-        'dropout': dropout,  # LSTM
-        'lstm_hidden_s': lstm_hidden_s,  # LSTM
-        'fc1_hidden_s': fc1_hidden_s,  # LSTM
-        'hidden_dim': hidden_dim,  # MLP_Manual
-        'optimizer_type': optimizer_type,
-    }
+    TRAINING_PARAMS = dict(zip(param_names, args))
     # Print out updated parameters to Gradio interface
     return f"Parameters successfully updated:\n" + "\n".join([f"{key}: {value}" for key, value in TRAINING_PARAMS.items()])
 
