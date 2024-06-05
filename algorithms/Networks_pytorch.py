@@ -286,8 +286,8 @@ def report_metrics(Y_test_real, prediction, metric, writer, iteration):
     metrics = {
         'RMSE': lambda: np.sqrt(mean_squared_error(Y_test_real, prediction)),
         'MAE': lambda: mean_absolute_error(Y_test_real, prediction),
-        'FDR': lambda: (fp / (fp + tp)) * 100 if (fp + tp) > 0 else 0,  # False Discovery Rate
-        'FAR': lambda: (fp / (tn + fp)) * 100 if (tn + fp) > 0 else 0,  # False Alarm Rate
+        'FDR': lambda: (fp / (fp + tp)) if (fp + tp) > 0 else 0,  # False Discovery Rate
+        'FAR': lambda: (fp / (tn + fp)) if (tn + fp) > 0 else 0,  # False Alarm Rate
         'F1': lambda: f1_score(Y_test_real, prediction), # F1 Score
         'recall': lambda: recall_score(Y_test_real, prediction), # Recall (sensitivity)
         'precision': lambda: precision_score(Y_test_real, prediction), # Precision (positive predictive value)

@@ -361,10 +361,27 @@ def interpolate_ts(df, method='linear'):
     """
 
     interp_dfs = []
+    total_interpolated = 0
 
     for serial_num, inner_df in df.groupby(level=0):
-        inner_df = inner_df.droplevel(level=0).asfreq('D') 
+        inner_df = inner_df.droplevel(level=0).asfreq('D')
+        # Count the number of NaN values before interpolation
+        before_interpolation = inner_df.isna().sum().sum()
         inner_df.interpolate(method=method, limit_direction='both', axis=0, inplace=True)
+
+        # Specify the columns to round
+        columns_to_round = ['predict_val', 'validate_val']
+
+        # Add a small threshold and round all values below this threshold to 0
+        threshold = 1e-10
+        inner_df[columns_to_round] = inner_df[columns_to_round].applymap(lambda x: 0 if np.abs(x) < threshold else x)
+        inner_df[columns_to_round] = inner_df[columns_to_round].round(0)
+
+        # Count the number of NaN values after interpolation and rounding
+        after_interpolation = inner_df.isna().sum().sum()
+
+        # Update the total number of interpolated values
+        total_interpolated += before_interpolation - after_interpolation
         inner_df.fillna(method='ffill', inplace=True)  # Forward fill
         inner_df.fillna(method='bfill', inplace=True)  # Backward fill
         inner_df['serial_number'] = serial_num
@@ -375,6 +392,7 @@ def interpolate_ts(df, method='linear'):
 
     interp_df = pd.concat(interp_dfs, axis=0)
     df = interp_df.set_index(['serial_number', 'date']).sort_index()
+    logger.info(f'Total interpolated values: {total_interpolated}, Percentage of interpolated values: {(total_interpolated / df.size) * 100}%')
 
     return df
 
