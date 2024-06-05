@@ -458,7 +458,7 @@ class DatasetPartitioner:
     """
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
-    def __init__(self, df, model, overlap=0, rank='None', num_features=10, technique='random',
+    def __init__(self, df, model, overlap=0, rank='None', num_features=10, test_type='t-test', technique='random',
                  test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample=0, fillna_method='None'):
         """
         Initialize the DatasetPartitioner object.
@@ -469,6 +469,7 @@ class DatasetPartitioner:
         - overlap (int): The overlap value for windowing (default: 0).
         - rank (str): The rank value (default: 'None').
         - num_features (int): The number of features (default: 10).
+        - test_type (str): The test type (default: 't-test').
         - technique (str): The partitioning technique (default: 'random').
         - test_train_perc (float): The percentage of data to be used for testing (default: 0.2).
         - windowing (int): The windowing value (default: 1).
@@ -483,6 +484,7 @@ class DatasetPartitioner:
         self.overlap = overlap
         self.rank = rank
         self.num_features = num_features
+        self.test_type = test_type
         self.technique = technique
         self.test_train_perc = test_train_perc
         self.windowing = windowing
@@ -986,7 +988,7 @@ class DatasetPartitioner:
         """
         return iter((self.Xtrain, self.Xtest, self.ytrain, self.ytest))
 
-def feature_selection(df, num_features):
+def feature_selection(df, num_features, test_type):
     """
     Selects the top 'num_features' features from the given dataframe based on statistical tests.
     Step 1.4: Feature selection from Classification.py
@@ -1014,9 +1016,17 @@ def feature_selection(df, num_features):
                 correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
                 logger.info(f'Pearson correlation: {correlation:.3f}')
 
-            # T-test to compare the means of two groups of features
-            _, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
-            logger.info(f'T-test p-value: {p_val:.3f}')
+            # Select the statistical test based on test_type
+            if test_type == 't-test':
+                # T-test to compare the means of two groups of features
+                _, p_val = scipy.stats.ttest_ind(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], axis=0, nan_policy='omit')
+                logger.info(f'T-test p-value: {p_val:.6f}')
+            elif test_type == 'mannwhitneyu':
+                # Mann-Whitney U test to compare distributions between two groups
+                _, p_val = scipy.stats.mannwhitneyu(df[df['predict_val'] == 0][feature], df[df['predict_val'] == 1][feature], alternative='two-sided')
+                logger.info(f'Mann-Whitney U test p-value: {p_val:.6f}')
+            else:
+                raise ValueError(f'Invalid test type: {test_type}')
 
             dict1[feature] = p_val
 

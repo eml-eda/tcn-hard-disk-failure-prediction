@@ -8,6 +8,7 @@ main_iface = gr.Interface(
         gr.Textbox(value='ST3000DM001', label='Model', info='Enter the model type(s). For multiple models, separate them with commas.'),
         gr.Textbox(value='01234567', label='ID Number', info='Enter the ID number(s).'),
         gr.CheckboxGroup(choices=['2013', '2014', '2015', '2016', '2017', '2018', '2019'], value=['2013'], label='Years', info='Select the years to consider.'),
+        gr.Dropdown(choices=['t-test', 'mannwhitneyu'], value=['t-test'], label='Statistical Tests', info='Select the statistical tests to extract features.'),
         gr.Dropdown(choices=[0, 1], value=1, label='Windowing', info='Select windowing technique.'),
         gr.Slider(minimum=1, maximum=365, step=1, value=115, label='Min Days HDD', info='Minimum number of days for HDD.'),
         gr.Slider(minimum=1, maximum=30, step=1, value=7, label='Days Considered as Failure', info='Number of days considered as failure.'),

@@ -559,7 +559,7 @@ def save_params_to_json(df, *args):
     """
     # Define parameter names and create a dictionary of params
     param_names = [
-        'model', 'id_number', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
+        'model', 'id_number', 'years', 'test_type','windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
@@ -665,7 +665,7 @@ def initialize_classification(*args):
     
     # Define parameter names and create a dictionary of params
     param_names = [
-        'model', 'id_number', 'years', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
+        'model', 'id_number', 'years', 'test_type', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
@@ -674,7 +674,7 @@ def initialize_classification(*args):
 
     # Assign values directly from the dictionary
     (
-        model, id_number, years, windowing, min_days_HDD, days_considered_as_failure,
+        model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, perform_features_extraction, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
@@ -682,6 +682,7 @@ def initialize_classification(*args):
     ) = dict(zip(param_names, args)).values()
     # here you can select the model. This is the one tested.
     # Correct years for the model
+    # Select the statistical methods to extract features
     # many parameters that could be changed, both for unbalancing, for networks and for features.
     # minimum number of days for a HDD to be filtered out
     # Days considered as failure
@@ -736,7 +737,7 @@ def initialize_classification(*args):
 
         if ranking != 'None':
             # Step 1.4: Feature Selection: Subflow chart of Main Classification Process
-            df = feature_selection(df, num_features)
+            df = feature_selection(df, num_features, test_type)
         logger.info('Used features')
         for column in list(df):
             logger.info(f'{column:<27}.')
@@ -755,7 +756,7 @@ def initialize_classification(*args):
     # Saving parameters to json file
     logger.info('Saving parameters to json file...')
     param_path = save_params_to_json(
-        df, model, id_number, years, windowing, min_days_HDD, days_considered_as_failure,
+        df, model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, perform_features_extraction, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
