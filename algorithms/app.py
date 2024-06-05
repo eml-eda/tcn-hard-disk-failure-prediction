@@ -1,5 +1,33 @@
 import gradio as gr
 from Classification import initialize_classification, set_training_params
+import argparse
+import sys
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('--model', default='ST3000DM001')
+parser.add_argument('--id_number', default='01234567')
+parser.add_argument('--years', nargs='*', default=['2013'])
+parser.add_argument('--statistical_tests', default='t-test')
+parser.add_argument('--windowing', default=1)
+parser.add_argument('--min_days_hdd', default=115)
+parser.add_argument('--days_considered_as_failure', default=7)
+parser.add_argument('--test_train_percentage', default=0.3)
+parser.add_argument('--oversample_undersample', default=1)
+parser.add_argument('--balancing_normal_failed', default='auto')
+parser.add_argument('--history_signal', default=32)
+parser.add_argument('--classifier', default='TCN')
+parser.add_argument('--perform_features_extraction', default=False)
+parser.add_argument('--cuda_dev', default='0')
+parser.add_argument('--ranking', default='Ok')
+parser.add_argument('--num_features', default=18)
+parser.add_argument('--overlap', default=1)
+parser.add_argument('--split_technique', default='random')
+parser.add_argument('--interpolate_technique', default='linear')
+parser.add_argument('--search_technique', default='randomized')
+parser.add_argument('--fill_na_method', default='None')
+# Add more arguments as needed
+args = parser.parse_args()
 
 # Add tabbed interface for ML training parameters
 main_iface = gr.Interface(
@@ -24,7 +52,7 @@ main_iface = gr.Interface(
         gr.Dropdown(choices=[0, 1, 2], value=1, label='Overlap', info='Select Overlap technique.'),
         gr.Dropdown(choices=['random', 'hdd', 'date'], value='random', label='Split Technique', info='Data split technique.'),
         gr.Dropdown(choices=['linear', 'time', 'None'], value='linear', label='Interpolate Technique', info='Interpolation technique.'),
-        gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Optimal parameters search technique.'),
+        gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Search technique.'),
         gr.Dropdown(choices=['ffill', 'None'], value='None', label='Fill NA Method', info='Method to fill NA values.'),
     ],
     outputs=[
@@ -60,4 +88,12 @@ iface = gr.TabbedInterface(
 )
 
 if __name__ == '__main__':
-    iface.launch()
+    # Check if any arguments were passed from the command line
+    if len(sys.argv) > 1:
+        # Convert args to a dictionary and get the values
+        args_values = list(vars(args).values())
+
+        # Call initialize_classification with the unpacked list of values
+        initialize_classification(*args_values)
+    else:
+        iface.launch()
