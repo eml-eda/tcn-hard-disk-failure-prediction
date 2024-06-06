@@ -36,7 +36,9 @@ TRAINING_PARAMS = {
     'dropout': 0.1,  # LSTM
     'lstm_hidden_s': 64,  # LSTM
     'fc1_hidden_s': 16,  # LSTM
-    'hidden_dim': 128,  # MLP_Manual
+    'hidden_dim': 128,  # MLP_Torch
+    'hidden_size': 8,  # DenseNet
+    'num_layers': 1,  # NNet
     'optimizer_type': 'Adam',
 }
 
@@ -442,41 +444,72 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
-        tcn_trainer = TCNTrainer(
+        tcn_trainer = UnifiedTrainer(
             model=args['net'],                      # The TCN model
             optimizer=args['optimizer'],            # Optimizer for the model
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number']
+            id_number=args['id_number'],
+            model_type='TCN'
         )
         # Run training and testing using the TCNTrainer
         return tcn_trainer.run(X_train, Y_train, X_test, Y_test)
     elif classifier == 'LSTM':
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
-        lstm_trainer = LSTMTrainer(
+        lstm_trainer = UnifiedTrainer(
             model=args['net'],                      # The MLP model
             optimizer=args['optimizer'],            # Optimizer for the model
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number']
+            id_number=args['id_number'],
+            model_type='LSTM'
         )
         # Run training and testing using the TCNTrainer
         return lstm_trainer.run(X_train, Y_train, X_test, Y_test)
-    elif classifier == 'MLP_Manual':
-        # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
-        # Initialize the MLPTrainer with the appropriate parameters
-        mlp_trainer = MLPTrainer(
+    elif classifier == 'NNet':
+        # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
+        nnet_trainer = UnifiedTrainer(
             model=args['net'],                      # The MLP model
             optimizer=args['optimizer'],            # Optimizer for the model
             epochs=args['epochs'],                  # Total number of epochs
             batch_size=args['batch_size'],          # Batch size for training
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number']
+            id_number=args['id_number'],
+            model_type='NNet'
+        )
+        # Run training and testing using the TCNTrainer
+        return nnet_trainer.run(X_train, Y_train, X_test, Y_test)
+    elif classifier == 'DenseNet':
+        # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
+        densenet_trainer = UnifiedTrainer(
+            model=args['net'],                      # The MLP model
+            optimizer=args['optimizer'],            # Optimizer for the model
+            epochs=args['epochs'],                  # Total number of epochs
+            batch_size=args['batch_size'],          # Batch size for training
+            lr=args['lr'],                          # Learning rate
+            reg=args['reg'],                        # Regularization parameter
+            id_number=args['id_number'],
+            model_type='DenseNet'
+        )
+        # Run training and testing using the TCNTrainer
+        return densenet_trainer.run(X_train, Y_train, X_test, Y_test)
+    elif classifier == 'MLP_Torch':
+        # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
+        # Initialize the MLPTrainer with the appropriate parameters
+        mlp_trainer = UnifiedTrainer(
+            model=args['net'],                      # The MLP model
+            optimizer=args['optimizer'],            # Optimizer for the model
+            epochs=args['epochs'],                  # Total number of epochs
+            batch_size=args['batch_size'],          # Batch size for training
+            lr=args['lr'],                          # Learning rate
+            reg=args['reg'],                        # Regularization parameter
+            id_number=args['id_number'],
+            model_type='MLP'
         )
         # Run training and testing using the MLPTrainer
         return mlp_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -597,7 +630,7 @@ def save_params_to_json(df, *args):
     return file_path
 
 def set_training_params(*args):
-    param_names = ['reg', 'batch_size', 'lr', 'weight_decay', 'epochs', 'dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'optimizer_type']
+    param_names = ['reg', 'batch_size', 'lr', 'weight_decay', 'epochs', 'dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'hidden_size', 'num_layers', 'optimizer_type']
     # Use the global keyword when modifying global variables
     global TRAINING_PARAMS
     TRAINING_PARAMS = dict(zip(param_names, args))
@@ -864,13 +897,13 @@ def initialize_classification(*args):
 
         # Save the best parameters to a JSON file
         save_best_params_to_json(best_params, classifier, id_number)
-    elif classifier == 'MLP_Manual':
+    elif classifier == 'MLP_Torch':
         # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
         batch_size = TRAINING_PARAMS['batch_size']
         lr = TRAINING_PARAMS['lr']
         weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
         epochs = TRAINING_PARAMS['epochs']
-        input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
+        input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input (5*32)
         hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
         optimizer_type = TRAINING_PARAMS['optimizer_type']
         reg = TRAINING_PARAMS['reg']
@@ -897,6 +930,86 @@ def initialize_classification(*args):
             'weight_decay': weight_decay,
             'epochs': epochs,
             'hidden_dim': hidden_dim,
+            'reg': reg,
+        }
+
+        # Save the best parameters to a JSON file
+        save_best_params_to_json(best_params, classifier, id_number)
+    elif classifier == 'NNet':
+        # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
+        batch_size = TRAINING_PARAMS['batch_size']
+        lr = TRAINING_PARAMS['lr']
+        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
+        epochs = TRAINING_PARAMS['epochs']
+        dropout = TRAINING_PARAMS['dropout']
+        hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
+        num_layers = TRAINING_PARAMS['num_layers']
+        optimizer_type = TRAINING_PARAMS['optimizer_type']
+        reg = TRAINING_PARAMS['reg']
+        num_inputs = Xtrain.shape[2]  # Number of features in the input (32)
+        logger.info(f'number of inputs: {num_inputs}, hidden_dim: {hidden_dim}')
+        net = NNet(input_size=num_inputs, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
+        if torch.cuda.is_available():
+            logger.info('Moving model to cuda')
+            net.cuda()
+        else:
+            logger.info('Model to cpu')
+        if optimizer_type == 'Adam':
+            # We use the Adam optimizer, a method for Stochastic Optimization
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            # We use the Stochastic Gradient Descent optimizer
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+        # Define the best parameters
+        best_params = {
+            'batch_size': batch_size,
+            'lr': lr,
+            'weight_decay': weight_decay,
+            'epochs': epochs,
+            'hidden_dim': hidden_dim,
+            'num_layers': num_layers,
+            'reg': reg,
+        }
+
+        # Save the best parameters to a JSON file
+        save_best_params_to_json(best_params, classifier, id_number)
+    elif classifier == 'DenseNet':
+        # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
+        batch_size = TRAINING_PARAMS['batch_size']
+        lr = TRAINING_PARAMS['lr']
+        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
+        epochs = TRAINING_PARAMS['epochs']
+        hidden_size = TRAINING_PARAMS['hidden_size']  # Example hidden dimension, can be adjusted
+        optimizer_type = TRAINING_PARAMS['optimizer_type']
+        reg = TRAINING_PARAMS['reg']
+        num_inputs = Xtrain.shape[1]
+        logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
+        net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
+        if torch.cuda.is_available():
+            logger.info('Moving model to cuda')
+            net.cuda()
+        else:
+            logger.info('Model to cpu')
+        if optimizer_type == 'Adam':
+            # We use the Adam optimizer, a method for Stochastic Optimization
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            # We use the Stochastic Gradient Descent optimizer
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+        # Define the best parameters
+        best_params = {
+            'batch_size': batch_size,
+            'lr': lr,
+            'weight_decay': weight_decay,
+            'epochs': epochs,
+            'hidden_size': hidden_size,
+            'num_layers': num_layers,
             'reg': reg,
         }
 

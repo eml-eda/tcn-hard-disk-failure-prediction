@@ -141,46 +141,47 @@ class GeneticFeatureSelector:
         return best_individual.fitness.values, best_individual, best_features
 
 
-if __name__ == '__main__':
-    # Manually pass the parameters
-    dataframe_path = 'your_dataframe.csv'  # Replace with your CSV file path
-    n_pop = 10
-    n_gen = 2
+# if __name__ == '__main__':
+#     # Manually pass the parameters
+#     dataframe_path = 'your_dataframe.csv'  # Replace with your CSV file path
+#     n_pop = 10
+#     n_gen = 2
 
-    # Read dataframe from CSV
-    df = pd.read_csv(dataframe_path, sep=',')
+#     # Read dataframe from CSV
+#     df = pd.read_csv(dataframe_path, sep=',')
 
-    # Encode labels column to numbers
-    le = LabelEncoder()
-    le.fit(df.iloc[:, -1])
-    y = le.transform(df.iloc[:, -1])
-    X = df.iloc[:, :-1]
+#     # Encode labels column to numbers
+#     le = LabelEncoder()
+#     # Identify the most relevant features that distinguish between the mutation points.
+#     le.fit(df['predict_val'])
+#     y = le.transform(df['predict_val'])
+#     X = df.drop(columns=['predict_val'])
 
-    # Create an instance of the GeneticFeatureSelector class
-    selector = GeneticFeatureSelector(X, y, n_population=n_pop, n_generation=n_gen)
+#     # Create an instance of the GeneticFeatureSelector class
+#     selector = GeneticFeatureSelector(X, y, n_population=n_pop, n_generation=n_gen)
 
-    # Get accuracy with all features
-    individual = [1 for i in range(len(X.columns))]
-    print("Accuracy with all features: \t" + str(selector.get_fitness(individual)) + "\n")
+#     # Get accuracy with all features
+#     individual = [1 for i in range(len(X.columns))]
+#     print("Accuracy with all features: \t" + str(selector.get_fitness(individual)) + "\n")
 
-    # Apply genetic algorithm
-    hof = selector.run_genetic_algorithm()
+#     # Apply genetic algorithm
+#     hof = selector.run_genetic_algorithm()
 
-    # Select the best individual
-    accuracy, individual, header = selector.best_individual()
-    print('Best Accuracy: \t' + str(accuracy))
-    print('Number of Features in Subset: \t' + str(individual.count(1)))
-    print('Individual: \t\t' + str(individual))
-    print('Feature Subset: ' + str(header))
+#     # Select the best individual
+#     accuracy, individual, header = selector.best_individual()
+#     print('Best Accuracy: \t' + str(accuracy))
+#     print('Number of Features in Subset: \t' + str(individual.count(1)))
+#     print('Individual: \t\t' + str(individual))
+#     print('Feature Subset: ' + str(header))
 
-    print('\n\nCreating a new classifier with the result')
+#     print('\n\nCreating a new classifier with the result')
 
-    # Read dataframe from CSV one more time
-    df = pd.read_csv(dataframe_path, sep=',')
+#     # Read dataframe from CSV one more time
+#     df = pd.read_csv(dataframe_path, sep=',')
 
-    # With feature subset
-    X = df[header]
+#     # With feature subset
+#     X = df[header]
 
-    clf = LogisticRegression()
-    scores = cross_val_score(clf, X, y, cv=5)
-    print("Accuracy with Feature Subset: \t" + str(selector.avg(scores)) + "\n")
+#     clf = LogisticRegression()
+#     scores = cross_val_score(clf, X, y, cv=5)
+#     print("Accuracy with Feature Subset: \t" + str(selector.avg(scores)) + "\n")

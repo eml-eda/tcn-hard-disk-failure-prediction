@@ -120,7 +120,7 @@ def infer(model, X, classifier):
     """
     if classifier == 'LSTM':
         inference_loader = DataLoader(FPLSTMDataset(X), batch_size=1, shuffle=False, collate_fn=FPLSTM_collate)
-    elif classifier in ['TCN', 'MLP_Manual']:
+    elif classifier in ['TCN', 'MLP_Torch']:
         inference_loader = DataLoader(TCNDataset(X), batch_size=1, shuffle=False, collate_fn=TCN_collate)
     model.eval()
     predictions = []
@@ -166,7 +166,7 @@ def initialize_inference(*args):
     elif classifier == 'TCN':
         # Get a list of all files in model_dir that start with 'tcn_training_'
         files = glob.glob(os.path.join(model_dir, f'tcn_{id_number}_*.pth'))
-    elif classifier == 'MLP_Manual':
+    elif classifier == 'MLP_Torch':
         # Get a list of all files in model_dir that start with 'mlp_training_'
         files = glob.glob(os.path.join(model_dir, f'mlp_manual_{id_number}_*.pth'))
 
@@ -212,7 +212,7 @@ def initialize_inference(*args):
 
     if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes']:
         pass
-    elif classifier in ['TCN', 'MLP_Manual', 'LSTM']:
+    elif classifier in ['TCN', 'MLP_Torch', 'LSTM']:
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
         # Make predictions
         predictions = infer(model, X_inference, classifier)

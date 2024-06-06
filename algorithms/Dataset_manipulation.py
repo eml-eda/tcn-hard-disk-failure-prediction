@@ -16,6 +16,7 @@ import dask.dataframe as dd
 from collections import Counter
 import logger
 from tqdm import tqdm
+from GeneticFeatureSelector import GeneticFeatureSelector
 
 
 def plot_feature(dataset):
@@ -1018,6 +1019,23 @@ def feature_selection(df, num_features, test_type):
     Returns:
         pandas.DataFrame: The dataframe with the selected features.
     """
+    # n_pop = 10
+    # n_gen = 2
+    # y = df['predict_val']
+    # X = df.drop(columns=['predict_val'])
+
+    # selector = GeneticFeatureSelector(X, y, n_population=n_pop, n_generation=n_gen)
+
+    # logger.info("Running Genetic Algorithm for feature selection")
+    # hof = selector.run_genetic_algorithm()
+
+    # accuracy, individual, header = selector.best_individual()
+    # logger.info(f'Best Accuracy: {accuracy}')
+    # logger.info(f'Number of Features in Subset: {individual.count(1)}')
+    # logger.info(f'Feature Subset: {header}')
+
+    # df = df[header + ['predict_val']]
+
     # Step 1.4.1: Define empty lists and dictionary
     features = []
     dict1 = {}

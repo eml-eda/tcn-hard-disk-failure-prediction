@@ -12,7 +12,47 @@ import os
 import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import grad
+from torch.utils.data import DataLoader
+import torch.cuda.amp as amp
 
+
+def report_metrics(Y_test_real, prediction, metric, writer, iteration):
+    """
+    Calculate and print various evaluation metrics based on the predicted and actual values.
+    
+    Parameters:
+    - Y_test_real (array-like): The actual values of the target variable.
+    - prediction (array-like): The predicted values of the target variable.
+    - metric (list): A list of metrics to calculate and print.
+    - writer (SummaryWriter): The TensorBoard writer.
+    - iteration (int): The current iteration.
+
+    Returns:
+    - float: The F1 score based on the predicted and actual values.
+    """
+    Y_test_real = np.asarray(Y_test_real)
+    prediction = np.asarray(prediction)
+    tp = np.sum((prediction == 1) & (Y_test_real == 1))
+    fp = np.sum((prediction == 1) & (Y_test_real == 0))
+    tn = np.sum((prediction == 0) & (Y_test_real == 0))
+    fn = np.sum((prediction == 0) & (Y_test_real == 1))
+    
+    metrics = {
+        'RMSE': lambda: np.sqrt(mean_squared_error(Y_test_real, prediction)),
+        'MAE': lambda: mean_absolute_error(Y_test_real, prediction),
+        'FDR': lambda: (fp / (fp + tp)) if (fp + tp) > 0 else 0,  # False Discovery Rate
+        'FAR': lambda: (fp / (tn + fp)) if (tn + fp) > 0 else 0,  # False Alarm Rate
+        'F1': lambda: f1_score(Y_test_real, prediction), # F1 Score
+        'recall': lambda: recall_score(Y_test_real, prediction), # Recall (sensitivity)
+        'precision': lambda: precision_score(Y_test_real, prediction), # Precision (positive predictive value)
+        'ROC AUC': lambda: roc_auc_score(Y_test_real, prediction) # ROC AUC
+    }
+    for m in metric:
+        if m in metrics:
+            score = metrics[m]()
+            logger.info(f'SCORE {m}: {score:.3f}')
+            writer.add_scalar(f'SCORE {m}', score, iteration)
+    return f1_score(Y_test_real, prediction)
 
 # these 2 functions are used to rightly convert the dataset for LSTM prediction
 class FPLSTMDataset(torch.utils.data.Dataset):
@@ -148,6 +188,33 @@ class MLP(nn.Module):
         final_output = self.lin3(hidden_layer2_output)
         return final_output
 
+class NNet(nn.Module):
+    def __init__(self, input_size, hidden_dim=4, num_layers=1, dropout=0.1):
+        super().__init__()
+        self.rnn = nn.LSTM(input_size=input_size, hidden_size=hidden_dim, num_layers=num_layers, dropout=dropout,
+                           batch_first=True)
+        self.linear = nn.Linear(hidden_dim, 2)
+
+    def forward(self, input):
+        _, (h_n, _) = self.rnn(input)
+        repr_ = h_n[-1]
+        out = self.linear(repr_)
+        return out
+
+class DenseNet(nn.Module):
+    def __init__(self, input_size, hidden_size=8):
+        hs1, hs2 = hidden_size
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_size, hs1), nn.Tanh(),
+            nn.Linear(hs1, hs2), nn.Tanh(),
+            nn.Linear(hs2, 2)
+        )
+
+    def forward(self, input):
+        out = self.layers(input)
+        return out
+
 ## this is the network used in the paper. It is a 1D conv with dilation
 class TCN_Network(nn.Module):
     
@@ -262,57 +329,59 @@ class TCN_Network(nn.Module):
 
         return x
 
-def report_metrics(Y_test_real, prediction, metric, writer, iteration):
+class TCNDataset(torch.utils.data.Dataset):
     """
-    Calculate and print various evaluation metrics based on the predicted and actual values.
-    
-    Parameters:
-    - Y_test_real (array-like): The actual values of the target variable.
-    - prediction (array-like): The predicted values of the target variable.
-    - metric (list): A list of metrics to calculate and print.
-    - writer (SummaryWriter): The TensorBoard writer.
-    - iteration (int): The current iteration.
+    A PyTorch dataset class for the TCN model.
 
-    Returns:
-    - float: The F1 score based on the predicted and actual values.
+    Args:
+        x (numpy.ndarray): Input data of shape (num_samples, num_timesteps, num_features).
+        y (numpy.ndarray): Target labels of shape (num_samples,).
+
+    Attributes:
+        x_tensors (dict): Dictionary containing input data tensors, with keys as indices and values as torch.Tensor objects.
+        y_tensors (dict): Dictionary containing target label tensors, with keys as indices and values as torch.Tensor objects.
     """
-    Y_test_real = np.asarray(Y_test_real)
-    prediction = np.asarray(prediction)
-    tp = np.sum((prediction == 1) & (Y_test_real == 1))
-    fp = np.sum((prediction == 1) & (Y_test_real == 0))
-    tn = np.sum((prediction == 0) & (Y_test_real == 0))
-    fn = np.sum((prediction == 0) & (Y_test_real == 1))
-    
-    metrics = {
-        'RMSE': lambda: np.sqrt(mean_squared_error(Y_test_real, prediction)),
-        'MAE': lambda: mean_absolute_error(Y_test_real, prediction),
-        'FDR': lambda: (fp / (fp + tp)) if (fp + tp) > 0 else 0,  # False Discovery Rate
-        'FAR': lambda: (fp / (tn + fp)) if (tn + fp) > 0 else 0,  # False Alarm Rate
-        'F1': lambda: f1_score(Y_test_real, prediction), # F1 Score
-        'recall': lambda: recall_score(Y_test_real, prediction), # Recall (sensitivity)
-        'precision': lambda: precision_score(Y_test_real, prediction), # Precision (positive predictive value)
-        'ROC AUC': lambda: roc_auc_score(Y_test_real, prediction) # ROC AUC
-    }
-    for m in metric:
-        if m in metrics:
-            score = metrics[m]()
-            logger.info(f'SCORE {m}: {score:.3f}')
-            writer.add_scalar(f'SCORE {m}', score, iteration)
-    return f1_score(Y_test_real, prediction)
 
-class LSTMTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number):
+    def __init__(self, x, y):
+        # No need to swap axes for TCN, keep the shape as (num_samples, num_timesteps, num_features)
+        self.x_tensors = {i : torch.as_tensor(x[i], dtype=torch.float32) for i in range(x.shape[0])}
+        self.y_tensors = {i : torch.as_tensor(y[i], dtype=torch.int64) for i in range(y.shape[0])}
+
+    def __len__(self):
         """
-        Initialize the LSTMModelTrainer with all necessary components.
+        Returns the number of samples in the dataset.
+
+        Returns:
+            int: Number of samples.
+        """
+        return len(self.x_tensors.keys())
+
+    def __getitem__(self, idx):
+        """
+        Returns the data and label at the given index.
 
         Args:
-            model (torch.nn.Module): The LSTM model to be trained and tested.
+            idx (int): Index of the sample.
+
+        Returns:
+            tuple: A tuple containing the input data tensor and the target label tensor.
+        """
+        return (self.x_tensors[idx], self.y_tensors[idx])
+
+class UnifiedTrainer:
+    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number, model_type):
+        """
+        Initialize the UnifiedTrainer with all necessary components.
+
+        Args:
+            model (torch.nn.Module): The model to be trained and tested (LSTM, TCN, or MLP).
             optimizer (torch.optim.Optimizer): Optimizer used for training the model.
             epochs (int): Number of training epochs.
             batch_size (int): Batch size for training.
             lr (float): Learning rate for the optimizer.
             reg (float): Regularization factor.
             id_number (int): The ID number of the model.
+            model_type (str): The type of model ('LSTM', 'TCN', 'MLP').
         """
         self.model = model
         self.optimizer = optimizer
@@ -321,9 +390,10 @@ class LSTMTrainer:
         self.lr = lr
         self.reg = reg
         self.id_number = id_number
-        self.train_writer = SummaryWriter('runs/LSTM_Training_Graph')
+        self.model_type = model_type
+        self.train_writer = SummaryWriter(f'runs/{model_type}_Training_Graph')
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
-        self.test_writer = SummaryWriter('runs/LSTM_Test_Graph')
+        self.test_writer = SummaryWriter(f'runs/{model_type}_Test_Graph')
 
     def FPLSTM_collate(self, batch):
         """
@@ -338,9 +408,8 @@ class LSTMTrainer:
         xx, yy = zip(*batch)
         x_batch = torch.stack(xx).permute(1, 0, 2)
         y_batch = torch.stack(yy)
-        return (x_batch, y_batch)
+        return x_batch, y_batch
 
-    # Function to calculate the total loss combining error and penalty terms
     def calculate_total_loss(self, error, reg):
         """
         Calculates the total loss for the model.
@@ -357,49 +426,66 @@ class LSTMTrainer:
         total_loss = reg * error + (1 - reg) * penalty
         return total_loss
 
-    def train(self, Xtrain, ytrain, epoch):
+    def train(self, train_loader, epoch):
         """
         Trains the LSTM model using the given training data.
 
         Args:
-            Xtrain (np.ndarray): The training input data.
-            ytrain (np.ndarray): The training target data.
+            train_loader (torch.utils.data.DataLoader): The training data loader.
             epoch (int): The current epoch number.
 
         Returns:
             dict: A dictionary containing the F1 scores for different metrics.
         """
-        train_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
-        self.model.train()  # Set the model to training mode
-        weights = [1.7, 0.3]  # Define class weights for the loss function, with the first class being the majority class and the second class being the minority class
-        class_weights = torch.FloatTensor(weights).cuda()  # Convert class weights to a CUDA tensor
-        predictions = np.zeros((Xtrain.shape[0], 2))  # Store the model's predictions
-        true_labels = np.zeros(Xtrain.shape[0])  # Store the true labels
+        # Set the model to training mode
+        self.model.train()
+        # Define class weights for the loss function, with the first class being the majority class and the second class being the minority class
+        weights = [1.7, 0.3]
+        # Convert class weights to a CUDA tensor
+        class_weights = torch.FloatTensor(weights).cuda()
         # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        predictions = np.zeros((len(train_loader.dataset), 2))  # Store the model's predictions
+        true_labels = np.zeros(len(train_loader.dataset))  # Store the true labels
+
+        # Initialize GradScaler for mixed precision training
+        scaler = amp.GradScaler()
 
         for batch_idx, data in enumerate(train_loader):
-            sequences, labels = data  # Input sequences and their corresponding labels
-            batchsize = sequences.shape[1]  # Number of sequences in each batch
-            sequences = sequences.cuda()  # Move sequences to GPU
-            labels = labels.cuda()  # Move labels to GPU
-            self.optimizer.zero_grad()  # Reset gradients from previous iteration
-            output = self.model(sequences)  # Forward pass through the model
-            output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
-            loss = criterion(output, labels)  # Calculate loss between model output and true labels
-            # Calculate the total loss (error + penalty)
-            total_loss = self.calculate_total_loss(loss, self.reg)
-            total_loss.backward()  # Backward pass to calculate gradients
-            self.optimizer.step()  # Update model parameters
-            # Store the predicted labels for this batch in the predictions array
-            predictions[(batch_idx * batchsize):((batch_idx + 1) * batchsize), :] = output_softmax.cpu().detach().numpy()
-            # Store the true labels for this batch in the true_labels array
-            true_labels[(batch_idx * batchsize):((batch_idx + 1) * batchsize)] = labels.cpu().numpy()
+            # Input sequences and their corresponding labels
+            sequences, labels = data
+            # Move sequences and lanels to GPU
+            sequences, labels = sequences.cuda(), labels.cuda()
+            # Reset gradients from previous iteration
+            self.optimizer.zero_grad()
 
-            if batch_idx > 0 and batch_idx % 10 == 0:  # Every 10 iterations, print the average loss and accuracy for the last 10 batches
+            # Disable CuDNN for the forward pass to avoid double backward issues
+            with torch.backends.cudnn.flags(enabled=False):
+                # Forward pass through the model with mixed precision
+                with amp.autocast():
+                    output = self.model(sequences)
+                    # Apply softmax to the output
+                    output_softmax = F.softmax(output, dim=1)
+                    # Calculate loss between model output and true labels
+                    loss = criterion(output, labels)
+                    # Calculate the total loss (error + penalty)
+                    total_loss = self.calculate_total_loss(loss, self.reg)
+
+            # Scale the loss and call backward
+            scaler.scale(total_loss).backward()
+            # Update model parameters with scaled gradients
+            scaler.step(self.optimizer)
+            # Update the scale for next iteration
+            scaler.update()
+            # Store the predicted labels for this batch in the predictions array
+            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
+            # Store the true labels for this batch in the true_labels array
+            true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = labels.cpu().numpy()
+
+            if batch_idx > 0 and batch_idx % 10 == 0:
                 # Calculate average loss for the last 10 batches
-                avg_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
-                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
+                avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
+                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
                 self.lr = self.optimizer.param_groups[0]['lr']
                 # Log to TensorBoard
                 self.train_writer.add_scalar('Training Loss', avg_loss, epoch * len(train_loader) + batch_idx)
@@ -407,12 +493,12 @@ class LSTMTrainer:
                 self.train_writer.add_scalar('Learning Rate', self.lr, epoch * len(train_loader) + batch_idx)
 
                 print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
-                    epoch, batch_idx * batchsize, Xtrain.shape[0], 
-                    (100. * (batch_idx * batchsize) / Xtrain.shape[0]),
+                    epoch, batch_idx * self.batch_size, len(train_loader.dataset), 
+                    (100. * (batch_idx * self.batch_size) / len(train_loader.dataset)),
                     avg_loss, avg_accuracy, self.lr), end="\r")
 
-        avg_train_loss = log_loss(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)], labels=[0, 1])
-        avg_train_acc = accuracy_score(true_labels[:((batch_idx + 1) * batchsize)], predictions[:((batch_idx + 1) * batchsize)].argmax(axis=1))
+        avg_train_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
+        avg_train_acc = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
 
         # Log to TensorBoard
         self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
@@ -425,488 +511,39 @@ class LSTMTrainer:
             f'({100. * avg_train_acc:.0f}%)'
         )
         print('\n')
-
-        true_labels = true_labels[:((batch_idx + 1) * batchsize)]
-        predictions = predictions[:((batch_idx + 1) * batchsize)]
         return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
-    def test(self, Xtest, ytest, epoch):
+    def test(self, test_loader, epoch):
         """
         Test the LSTM model on the test dataset.
 
         Args:
-            Xtest (np.ndarray): The input test data.
-            ytest (np.ndarray): The target test data.
+            test_loader (torch.utils.data.DataLoader): The test data loader.
             epoch (int): The current epoch number.
 
         Returns:
             None
-
         """
-        test_loader = torch.utils.data.DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
         self.model.eval()
         criterion = torch.nn.CrossEntropyLoss()
-        output = torch.as_tensor([]).cuda()
-        labels = torch.as_tensor([], dtype=torch.long).cuda()
-
+        predictions = np.zeros((len(test_loader.dataset), 2))
+        true_labels = np.zeros(len(test_loader.dataset))
+    
         with torch.no_grad():
-            output = torch.as_tensor([])
-            labels = torch.as_tensor([], dtype=torch.long)
             for batch_idx, test_data in enumerate(test_loader):
                 sequences, labels = test_data
-                sequences = sequences.cuda()
-                labels = labels.cuda()
-                output = self.model(sequences)
-                output_softmax = F.softmax(output, dim=1)
-                loss = criterion(output, labels)
-                output = torch.cat((output, output_softmax.cpu()))
-                labels = torch.cat((labels, labels.cpu()))
+                sequences, labels = sequences.cuda(), labels.cuda()
 
-        # Calculate metrics
-        output_np = output.cpu().numpy()
-        labels_np = labels.cpu().numpy()
-        avg_test_loss = log_loss(labels_np, output_np, labels=[0, 1])
-        avg_test_acc = accuracy_score(labels_np, output_np.argmax(axis=1))
+                # Forward pass through the model with mixed precision
+                with amp.autocast():
+                    output = self.model(sequences)
+                    # Apply softmax to the output
+                    output_softmax = F.softmax(output, dim=1)
+                    loss = criterion(output, labels)
 
-        # Log to TensorBoard
-        self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
-        self.test_writer.add_scalar('Average Accuracy', avg_test_acc, Xtest.shape[0], epoch)
-
-        logger.info(
-            f'Test set: '
-            f'Average loss: {avg_test_loss:.4f}, '
-            f'Accuracy: {avg_test_acc:.4f}'
-        )
-        print('\n')
-
-        report_metrics(labels_np, output_np.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
-
-    def run(self, Xtrain, ytrain, Xtest, ytest):
-        """
-        Train and validate the LSTM network.
-
-        Args:
-            Xtrain (np.ndarray): The training input data.
-            ytrain (np.ndarray): The training target data.
-            Xtest (np.ndarray): The testing input data.
-            ytest (np.ndarray): The testing target data.
-
-        Returns:
-            model_path (str): The path to the saved model.
-        """
-        
-        # Training Loop
-        F1_list = np.ndarray(5)
-        i = 0
-        # identical to net_train_validate but train and test are separated and train does not include test
-        for epoch in range(1, self.epochs):
-            F1 = self.train(Xtrain, ytrain, epoch)
-            self.test(Xtest, ytest, epoch)
-            F1_list[i] = F1
-            i += 1
-            if i == 5:
-                i = 0
-            if F1_list[0] != 0 and (max(F1_list) - min(F1_list)) == 0:
-                logger.info("Exited because last 5 epochs has constant F1")
-            # if epoch % 20 == 0:
-            #     self.lr /= 10
-            #     for param_group in self.optimizer.param_groups:
-            #         param_group['lr'] = self.lr
-        self.train_writer.close()
-        self.test_writer.close()
-        logger.info('Training completed, saving the model...')
-
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
-        # Create the directory if it doesn't exist
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-        # Format as string
-        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Save the model
-        model_path = os.path.join(model_dir, f'lstm_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
-        torch.save(self.model.state_dict(), model_path)
-        logger.info('Model saved as:', model_path)
-
-        return model_path
-
-class TCNTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number):
-        """
-        Initialize the TCNTrainer with all necessary components for training and testing.
-
-        Args:
-            model (torch.nn.Module): The TCN model.
-            optimizer (torch.optim.Optimizer): Optimizer used for model training.
-            epochs (int): Number of training epochs.
-            batch_size (int): Batch size for training.
-            lr (float): Initial learning rate.
-            reg (float): Regularization factor.
-            id_number (int): The ID number of the model.
-        """
-        self.model = model
-        self.optimizer = optimizer
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.lr = lr
-        self.reg = reg
-        self.id_number = id_number
-        self.train_writer = SummaryWriter('runs/TCN_Training_Graph')
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
-        self.test_writer = SummaryWriter('runs/TCN_Test_Graph')
-
-    # Function to calculate the total loss combining error and penalty terms
-    def calculate_total_loss(self, error, reg):
-        """
-        Calculates the total loss for the model.
-
-        Parameters:
-        - error: The error term representing the model's prediction error.
-        - reg: The regularization parameter.
-
-        Returns:
-        - total_loss: The total loss, which is a combination of the prediction error and regularization penalty.
-        """
-        grads = grad(error, self.model.parameters(), create_graph=True)
-        penalty = sum(g.pow(2).mean() for g in grads)
-        total_loss = reg * error + (1 - reg) * penalty
-        return total_loss
-
-    def train(self, Xtrain, ytrain, epoch):
-        """
-        Trains the TCN model using the given training data and parameters.
-
-        Args:
-            ep (int): The current epoch number.
-            Xtrain (numpy.ndarray): The input training data.
-            ytrain (numpy.ndarray): The target training data.
-
-        Returns:
-            numpy.ndarray: The F1 scores calculated using the training data.
-
-        """
-        # Randomize the order of the elements in the training set to ensure that the training process is not influenced by the order of the data
-        Xtrain, ytrain = shuffle(Xtrain, ytrain)
-        self.model.train()
-        samples = Xtrain.shape[0]
-        nbatches = samples // self.batch_size
-        predictions = np.zeros((Xtrain.shape[0], 2))  # Store the model's predictions
-        true_labels = np.zeros(Xtrain.shape[0])  # Store the true labels
-        # we weights the different classes, the first class is the majority class, the second is the minority class
-        weights = [1.7, 0.3]
-        # we use the GPU to train
-        class_weights = torch.FloatTensor(weights).cuda()
-        # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
-        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-
-        for batch_idx in np.arange(nbatches + 1):
-            data = Xtrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]
-            target = ytrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
-            
-            if torch.cuda.is_available():
-                # Convert the data and target to tensors and move them to the GPU
-                data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
-            else:
-                # Convert the data and target to tensors
-                data, target = torch.Tensor(data), torch.Tensor(target)
-
-            # Zero the gradients since PyTorch accumulates gradients on subsequent backward passes
-            self.optimizer.zero_grad()
-            # Get the output predictions from the model
-            output = self.model(data)
-            # Calculate the loss between the predictions and the target
-            loss = criterion(output, target.long())
-            # Calculate the total loss (error + penalty)
-            total_loss = self.calculate_total_loss(loss, self.reg)
-            # Perform backpropagation to calculate the gradients of the loss with respect to the model parameters
-            total_loss.backward()
-            # Update the model parameters using the gradients and the optimizer
-            self.optimizer.step()
-            # Update the learning rate using the scheduler
-            self.scheduler.step(loss)
-            # Apply softmax to the output to get the predicted probabilities
-            output_softmax = F.softmax(output, dim=1)
-            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
-            true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
-            if batch_idx > 0 and batch_idx % 10 == 0:
-                # Calculate average loss and accuracy for the last 10 batches
-                avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
-                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
-                self.lr = self.optimizer.param_groups[0]['lr']
-                # Log to TensorBoard
-                self.train_writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
-                self.train_writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
-                self.train_writer.add_scalar('Learning Rate', self.lr, epoch * nbatches + batch_idx)
-
-                # Print the training progress to the console
-                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
-                    epoch, batch_idx * self.batch_size, samples,
-                    (100. * batch_idx * self.batch_size) / samples,
-                    avg_loss, avg_accuracy, self.lr), end="\r")
-
-        # Calculate the average loss, accuracy, and ROC AUC over all of the batches
-        avg_train_loss = log_loss(true_labels, predictions, labels=[0, 1])
-        avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
-
-        # Log to TensorBoard
-        self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
-        self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
-
-        logger.info(
-            f'Train Epoch: {epoch} '
-            f'Avg Loss: {avg_train_loss:.6f} '
-            f'Avg Accuracy: {int(avg_train_acc * samples)}/{samples} '
-            f'({100. * avg_train_acc:.0f}%)'
-        )
-        print('\n')
-
-        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
-
-    def test(self, Xtest, ytest, epoch):
-        """
-        Test the TCN model on the test dataset.
-
-        Args:
-            Xtest (np.ndarray): Input test data.
-            ytest (np.ndarray): Target test data.
-            epoch (int): The current epoch number.
-
-        Returns:
-            np.ndarray: Predictions for the test set.
-        """
-        self.model.eval()  # Set the model to evaluation mode
-        nbatches = Xtest.shape[0] // self.batch_size  # Calculate the number of batches
-        predictions = np.zeros((Xtest.shape[0], 2))  # Initialize an array to store the model's predictions
-        true_labels = np.zeros(Xtest.shape[0])  # Initialize an array to store the true labels
-        criterion = torch.nn.CrossEntropyLoss()  # Define the loss function
-
-        # Disable gradient calculations (since we are in test mode)
-        with torch.no_grad():
-            for batch_idx in np.arange(nbatches + 1):
-                # Extract the data and target for this batch
-                data = Xtest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :, :]
-                target = ytest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
-                data, target = torch.Tensor(data), torch.Tensor(target)
-
-                # If CUDA is available, move the data and target to the GPU
-                if torch.cuda.is_available():
-                    data, target = data.cuda(), target.cuda()
-
-                # Forward pass: compute predicted outputs by passing inputs to the model
-                output = self.model(data)
-                # Apply softmax to the output to get the predicted probabilities
-                output_softmax = F.softmax(output, dim=1)
                 # Store the predictions and true labels for this batch
                 predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().numpy()
-                true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
-
-        # Calculate the average loss and accuracy over all of the batches
-        avg_test_loss = log_loss(true_labels, predictions, labels=[0, 1])
-        avg_test_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
-
-        # Log to TensorBoard
-        self.test_writer.add_scalar('Average Loss', avg_test_loss, epoch)
-        self.test_writer.add_scalar('Average Accuracy', avg_test_acc, epoch)
-
-        logger.info(
-            f'Test set: '
-            f'Average loss: {avg_test_loss:.4f}, '
-            f'Accuracy: {avg_test_acc:.4f}'
-        )
-        print('\n')
-
-        report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
-        #return predictions.argmax(axis=1)
-
-    def run(self, Xtrain, ytrain, Xtest, ytest):
-        """
-        Run the training and testing process for the model.
-
-        Args:
-            Xtrain (np.ndarray): The training input data.
-            ytrain (np.ndarray): The training target data.
-            Xtest (np.ndarray): The testing input data.
-            ytest (np.ndarray): The testing target data.
-        """
-        # Use a deque to store the last 5 F1 scores to check for convergence
-        F1_list = deque(maxlen=5)
-
-        for epoch in range(1, self.epochs):
-            # the train include also the test inside
-            F1 = self.train(Xtrain, ytrain, epoch)
-            # At each epoch, we test the network to print the accuracy
-            self.test(Xtest, ytest, epoch)
-            F1_list.append(F1)
-
-            if len(F1_list) == 5 and len(set(F1_list)) == 1:
-                logger.info("Exited because last 5 epochs has constant F1")
-                break
-
-            # if epoch % 20 == 0:
-            #     self.lr /= 10
-            #     for param_group in self.optimizer.param_groups:
-            #         param_group['lr'] = self.lr
-        self.train_writer.close()
-        self.test_writer.close()
-        logger.info('Training completed, saving the model...')
-
-        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', self.id_number)
-        # Create the directory if it doesn't exist
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-        # Format as string
-        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Save the model
-        model_path = os.path.join(model_dir, f'tcn_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
-        torch.save(self.model.state_dict(), model_path)
-        logger.info('Model saved as:', model_path)
-
-class MLPTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number):
-        """
-        Initialize the MLPTrainer with all necessary components for training and testing.
-
-        Args:
-            model (torch.nn.Module): The MLP model.
-            optimizer (torch.optim.Optimizer): Optimizer used for model training.
-            epochs (int): Number of training epochs.
-            batch_size (int): Batch size for training.
-            lr (float): Initial learning rate.
-            reg (float): Regularization factor.
-            id_number (int): The ID number of the model.
-        """
-        self.model = model
-        self.optimizer = optimizer
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.lr = lr
-        self.reg = reg
-        self.id_number = id_number
-        self.train_writer = SummaryWriter('runs/MLP_Training_Graph')
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
-        self.test_writer = SummaryWriter('runs/MLP_Test_Graph')
-
-    def calculate_total_loss(self, error, reg):
-        """
-        Calculates the total loss for the model.
-
-        Parameters:
-        - error: The error term representing the model's prediction error.
-        - reg: The regularization parameter.
-
-        Returns:
-        - total_loss: The total loss, which is a combination of the prediction error and regularization penalty.
-        """
-        grads = grad(error, self.model.parameters(), create_graph=True)
-        penalty = sum(g.pow(2).mean() for g in grads)
-        total_loss = reg * error + (1 - reg) * penalty
-        return total_loss
-
-    def train(self, Xtrain, ytrain, epoch):
-        """
-        Trains the MLP model using the given training data and parameters.
-
-        Args:
-            epoch (int): The current epoch number.
-            Xtrain (numpy.ndarray): The input training data.
-            ytrain (numpy.ndarray): The target training data.
-
-        Returns:
-            numpy.ndarray: The F1 scores calculated using the training data.
-        """
-        Xtrain, ytrain = shuffle(Xtrain, ytrain)
-        self.model.train()
-        samples = Xtrain.shape[0]
-        nbatches = samples // self.batch_size
-        predictions = np.zeros((samples, 2))  # Store the model's predictions
-        true_labels = np.zeros(samples)  # Store the true labels
-        weights = [1.7, 0.3]
-        class_weights = torch.FloatTensor(weights).cuda()
-        # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
-        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-
-        for batch_idx in np.arange(nbatches + 1):
-            data = Xtrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
-            target = ytrain[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
-
-            if torch.cuda.is_available():
-                data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
-            else:
-                data, target = torch.Tensor(data), torch.Tensor(target)
-
-            self.optimizer.zero_grad()
-            output = self.model(data)
-            output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
-            loss = criterion(output, target.long())
-            # Calculate the total loss (error + penalty)
-            total_loss = self.calculate_total_loss(loss, self.reg)
-            total_loss.backward()  # Backward pass to calculate gradients
-            self.optimizer.step()
-            self.scheduler.step(loss)   # Update the learning rate using the scheduler
-            predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
-            true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
-
-            if batch_idx > 0 and batch_idx % 10 == 0:
-                avg_loss = log_loss(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)], labels=[0, 1])
-                avg_accuracy = accuracy_score(true_labels[:((batch_idx + 1) * self.batch_size)], predictions[:((batch_idx + 1) * self.batch_size)].argmax(axis=1))
-                self.lr = self.optimizer.param_groups[0]['lr']
-                self.train_writer.add_scalar('Training Loss', avg_loss, epoch * nbatches + batch_idx)
-                self.train_writer.add_scalar('Training Accuracy', avg_accuracy, epoch * nbatches + batch_idx)
-                self.train_writer.add_scalar('Learning Rate', self.lr, epoch * nbatches + batch_idx)
-                print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f} Accuracy: {:.4f} LR: {:.6f}'.format(
-                    epoch,
-                    batch_idx * self.batch_size,
-                    samples,
-                    (100. * batch_idx * self.batch_size) / samples,
-                    avg_loss,
-                    avg_accuracy,
-                    self.lr), end="\r")
-
-        avg_train_loss = log_loss(true_labels, predictions, labels=[0, 1])
-        avg_train_acc = accuracy_score(true_labels, predictions.argmax(axis=1))
-        self.train_writer.add_scalar('Average Loss', avg_train_loss, epoch)
-        self.train_writer.add_scalar('Average Accuracy', avg_train_acc, epoch)
-        logger.info(
-            f'Train Epoch: {epoch} '
-            f'Avg Loss: {avg_train_loss:.6f} '
-            f'Avg Accuracy: {int(avg_train_acc * samples)}/{samples} '
-            f'({100. * avg_train_acc:.0f}%)'
-        )
-        print('\n')
-        return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
-
-    def test(self, Xtest, ytest, epoch):
-        """
-        Test the MLP model on the test dataset.
-
-        Args:
-            Xtest (np.ndarray): Input test data.
-            ytest (np.ndarray): Target test data.
-            epoch (int): The current epoch number.
-
-        Returns:
-            np.ndarray: Predictions for the test set.
-        """
-        self.model.eval()
-        nbatches = Xtest.shape[0] // self.batch_size
-        predictions = np.zeros((Xtest.shape[0], 2))  # Store the model's predictions
-        true_labels = np.zeros(Xtest.shape[0])  # Store the true labels
-        criterion = torch.nn.CrossEntropyLoss()
-
-        with torch.no_grad():
-            for batch_idx in np.arange(nbatches + 1):
-                data = Xtest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
-                target = ytest[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)]
-
-                if torch.cuda.is_available():
-                    data, target = torch.Tensor(data).cuda(), torch.Tensor(target).cuda()
-                else:
-                    data, target = torch.Tensor(data), torch.Tensor(target)
-
-                output = self.model(data)
-                output_softmax = F.softmax(output, dim=1)  # Apply softmax to the output
-                loss = criterion(output, target.long()).item()
-                predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
-                true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = target.cpu().numpy()
+                true_labels[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size)] = labels.cpu().numpy()
 
         # Calculate the average loss and accuracy over all of the batches
         avg_test_loss = log_loss(true_labels, predictions, labels=[0, 1])
@@ -921,7 +558,6 @@ class MLPTrainer:
             f'Accuracy: {avg_test_acc:.4f}'
         )
         print('\n')
-
         report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
         #return predictions.argmax(axis=1)
 
@@ -935,10 +571,16 @@ class MLPTrainer:
             Xtest (np.ndarray): The testing input data.
             ytest (np.ndarray): The testing target data.
         """
+        if self.model_type == 'LSTM':
+            train_loader = DataLoader(FPLSTMDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
+            test_loader = DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
+        else:
+            train_loader = DataLoader(TCNDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True)
+            test_loader = DataLoader(TCNDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True)
         F1_list = deque(maxlen=5)
         for epoch in range(1, self.epochs):
-            F1 = self.train(Xtrain, ytrain, epoch)
-            self.test(Xtest, ytest, epoch)
+            F1 = self.train(train_loader, epoch)
+            self.test(test_loader, epoch)
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:
@@ -957,6 +599,6 @@ class MLPTrainer:
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
         now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_path = os.path.join(model_dir, f'mlp_manual_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
+        model_path = os.path.join(model_dir, f'{self.model_type.lower()}_{self.id_number}_epochs_{self.epochs}_batchsize_{self.batch_size}_lr_{self.lr}_{now_str}.pth')
         torch.save(self.model.state_dict(), model_path)
-        logger.info('Model saved as:', model_path)
+        logger.info(f'Model saved as: {model_path}')
