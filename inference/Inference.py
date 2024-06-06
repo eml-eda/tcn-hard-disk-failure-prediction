@@ -153,7 +153,7 @@ def initialize_inference(*args):
     overlap = params['overlap']
     windowing = params['windowing']
     history_signal = params['history_signal']
-    perform_features_extraction = params['perform_features_extraction']
+    features_extraction_method = params['features_extraction_method']
     interpolate_technique = params['interpolate_technique']
     smart_attributes = params['smart_attributes']
     days_considered_as_failure = params['days_considered_as_failure']
@@ -205,7 +205,7 @@ def initialize_inference(*args):
     )
 
     # Step x.1: Feature Extraction
-    if perform_features_extraction == True: 
+    if features_extraction_method == True: 
         # Extract features for the train and test set
         Xtrain = feature_extraction(Xtrain)
         Xtest = feature_extraction(Xtest)

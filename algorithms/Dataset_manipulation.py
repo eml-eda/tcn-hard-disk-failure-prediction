@@ -5,6 +5,7 @@ import pickle
 import os
 import matplotlib.pyplot as plt
 import glob
+from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from imblearn.under_sampling import RandomUnderSampler
@@ -17,6 +18,9 @@ from collections import Counter
 import logger
 from tqdm import tqdm
 from GeneticFeatureSelector import GeneticFeatureSelector
+from hmmlearn import hmm
+from imblearn.pipeline import Pipeline
+from sklearn.decomposition import PCA
 
 
 def plot_feature(dataset):
@@ -441,45 +445,113 @@ def generate_failure_predictions(df, days, window):
 
 def feature_extraction(X):
     """
-    Extracts features from the input data.
-
+    Extracts features from the input data with the following steps:
+    1. Sum of all the features and store in the first column.
+    2. Minimum of all the features and store in the second column.
+    3. Maximum of all the features and store in the third column.
+    4. Calculate the slope of the features and store in the fourth column.
+    5. Store the y-intercept of the linear regression line (i.e., the expected mean value of Y when all X=0) in the fifth column.
+    6. Use HMM to generate state sequences and store the most frequent state in the fifth column.
+    7. Calculate the standard deviation and store in the seventh column.
+    8. Calculate the autocorrelation for lag-1 and store in the eighth column.
+    
     :param X (ndarray): Input data of shape (samples, features, dim_window).
 
-    :return: ndarray: Extracted features of shape (samples, features, 4).
+    :return: ndarray: Extracted features of shape (samples, features, 8).
     """
-    logger.info('Extracting Features')
     samples, features, dim_window = X.shape
-    X_feature = np.ndarray((X.shape[0],X.shape[1], 4))
+    logger.info(f'Extracting: samples: {samples}, features: {features}, dim_window: {dim_window}')
+    X_feature = np.zeros((samples, features, 8))
     # sum of all the features
-    X_feature[:,:,0] = np.sum((X), axis = 2)
-    logger.info(f'Sum: {X_feature[:,:,0]}')
+    X_feature[:,:,0] = np.sum((X), axis=2)
+    #print(f'Sum: {X_feature[:,:,0]}')
     # min of all the features
-    X_feature[:,:,1] = np.min((X), axis = 2)
-    logger.info(f'Min: {X_feature[:,:,1]}')
+    X_feature[:,:,1] = np.min((X), axis=2)
+    #print(f'Min: {X_feature[:,:,1]}')
     # max of all the features
-    X_feature[:,:,2] = np.max((X), axis = 2)
-    logger.info(f'Max: {X_feature[:,:,2]}')
+    X_feature[:,:,2] = np.max((X), axis=2)
+    #print(f'Max: {X_feature[:,:,2]}')
     # Calculate the slope of the features
-    X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
-    logger.info(f'Similar slope: {X_feature[:,:,3]}')
-    '''
-    print('Slope')
-    for s in np.arange(samples):
-        for f in np.arange(features):
+    #X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
+    #print(f'Similar slope: {X_feature[:,:,3]}')
+    # Use Linear Regression to extract slope and intercept
+    for s in tqdm(range(samples), desc='Processing samples with LinearRegression'):
+        for f in range(features):
             model = LinearRegression()
-            model.fit(np.arange(X.shape[2]).reshape(-1,1),X[s,f,:])
-            X_feature[s,f,3] = model.coef_
-            X_feature[s,f,4] = model.intercept_
-    '''
+            model.fit(np.arange(dim_window).reshape(-1, 1), X[s, f, :])
+            X_feature[s, f, 3] = model.coef_[0]  # Slope
+            X_feature[s, f, 4] = model.intercept_  # Intercept
+    #print(f'Coefficent: {X_feature[:,:,3]}')
+    #print(f'Intercept: {X_feature[:,:,4]}')
+    # Use HMM to generate state sequences
+    for f in tqdm(range(features), desc='Processing features with GaussianHMM'):
+        feature_series = X[:, f, :]
+        feature_series_reshaped = feature_series.reshape(-1, dim_window)
+
+        # Train HMM on the reshaped feature series
+        n_states = 3  # Number of hidden states (this can be adjusted)
+        hmm_model = hmm.GaussianHMM(n_components=n_states, covariance_type="diag", n_iter=1000)
+        hmm_model.fit(feature_series_reshaped)
+
+        # Generate state sequences for each sample
+        for s in tqdm(range(samples), desc='Generating state sequences for each sample', leave=False):
+            state_seq = hmm_model.predict(feature_series[s].reshape(-1, 1))
+            # Using the most frequent state as an additional feature
+            most_frequent_state = np.bincount(state_seq).argmax()
+            X_feature[s, f, 5] = most_frequent_state  # Store HMM result at index 5
+    #print(f'HMM state sequence: {X_feature[:, :, 5]}')
+
+    # Calculate the standard deviation
+    X_feature[:, :, 6] = np.std(X, axis=2)
+    #print(f'Standard Deviation: {X_feature[:, :, 6]}')
+
+    # Calculate the autocorrelation for lag-1
+    for s in tqdm(range(samples), desc="Processing samples with Auto Correlation"):
+        for f in range(features):
+            X_feature[s, f, 7] = np.corrcoef(X[s, f, :-1], X[s, f, 1:])[0, 1]
+    #print(f'Autocorrelation: {X_feature[:, :, 7]}')
+
     return X_feature
 
+def feature_extraction_PCA(X, pca_components):
+    """
+    Perform feature extraction using Principal Component Analysis (PCA) on the input data.
+
+    Parameters:
+    - X: numpy array of shape (samples, features, dim_window)
+        The input data to perform feature extraction on.
+    - pca_components (int): The number of components to keep.
+
+    Returns:
+    - X_pca: numpy array of shape (samples, features, n_components)
+        The transformed data after applying PCA.
+
+    """
+    samples, features, dim_window = X.shape
+    logger.info(f'Extracting: samples: {samples}, features: {features}, dim_window: {dim_window}')
+    
+    # Ensure n_components is not more than the minimum of dim_window and pca_components
+    n_components = min(pca_components, dim_window)
+    X_pca = np.zeros((samples, features, n_components))
+
+    for i in tqdm(range(samples), desc='Processing samples'):
+        for j in range(features):
+            current_data = X[i, j, :].reshape(-1, dim_window)
+            current_n_samples, current_n_features = current_data.shape
+            
+            # Adjust n_components to be within the valid range
+            valid_n_components = min(n_components, current_n_samples, current_n_features)
+            pca = PCA(n_components=valid_n_components)
+            X_pca[i, j, :valid_n_components] = pca.fit_transform(current_data)[:, :valid_n_components]
+
+    return X_pca
 
 class DatasetPartitioner:
     """
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
     def __init__(self, df, model, overlap=0, rank='None', num_features=10, test_type='t-test', technique='random',
-                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample=0, fillna_method='None'):
+                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample='None', fillna_method='None'):
         """
         Initialize the DatasetPartitioner object.
         
@@ -495,7 +567,7 @@ class DatasetPartitioner:
         - windowing (int): The windowing value (default: 1).
         - window_dim (int): The window dimension (default: 5).
         - resampler_balancing (float): The resampler balancing factor (default: auto).
-        - oversample_undersample (int): The oversample/undersample value (default: 0).
+        - oversample_undersample (str): The oversample/undersample value (default: None).
         - fillna_method (str): Method to fill the NA values (default: 'None').
 
         """
@@ -683,7 +755,7 @@ class DatasetPartitioner:
                 windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
                 # Under sample the dataframe based on the serial numbers and the factor
                 indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
-                # Update windowed_df based on the indexes
+                # Update windowed_df based on the indexes, undersamples the DataFrame based on the serial numbers and the factor down_factor, reducing the number of rows in the DataFrame.
                 windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
                 # Convert back to Dask DataFrame
                 windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
@@ -902,9 +974,13 @@ class DatasetPartitioner:
         - ytest (ndarray): The test labels.
         """
 
-        if self.oversample_undersample != 2:
-            resampler = RandomUnderSampler(sampling_strategy=self.resampler_balancing, random_state=42) if self.oversample_undersample == 0 else SMOTE(sampling_strategy=self.resampler_balancing, random_state=42)
-            Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, resampler)
+        if self.oversample_undersample != 'None':
+            # Define pipeline
+            over = SMOTE(sampling_strategy=self.resampler_balancing, random_state=42)
+            under = RandomUnderSampler(sampling_strategy=self.resampler_balancing, random_state=42)
+            steps = [('o', over), ('u', under)]
+            pipeline = Pipeline(steps=steps)
+            Xtrain, ytrain = self.resample_windowed_data(Xtrain, ytrain, pipeline)
         else:
             ytrain = ytrain.astype(int)
             ytest = ytest.astype(int)

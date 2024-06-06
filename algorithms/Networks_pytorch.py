@@ -13,7 +13,6 @@ import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import grad
 from torch.utils.data import DataLoader
-import torch.cuda.amp as amp
 
 
 def report_metrics(Y_test_real, prediction, metric, writer, iteration):
@@ -394,6 +393,7 @@ class UnifiedTrainer:
         self.train_writer = SummaryWriter(f'runs/{model_type}_Training_Graph')
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         self.test_writer = SummaryWriter(f'runs/{model_type}_Test_Graph')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Get the device
 
     def FPLSTM_collate(self, batch):
         """
@@ -442,27 +442,27 @@ class UnifiedTrainer:
         # Define class weights for the loss function, with the first class being the majority class and the second class being the minority class
         weights = [1.7, 0.3]
         # Convert class weights to a CUDA tensor
-        class_weights = torch.FloatTensor(weights).cuda()
+        class_weights = torch.FloatTensor(weights).to(self.device)
         # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
         predictions = np.zeros((len(train_loader.dataset), 2))  # Store the model's predictions
         true_labels = np.zeros(len(train_loader.dataset))  # Store the true labels
 
         # Initialize GradScaler for mixed precision training
-        scaler = amp.GradScaler()
+        scaler = torch.GradScaler()
 
         for batch_idx, data in enumerate(train_loader):
             # Input sequences and their corresponding labels
             sequences, labels = data
             # Move sequences and lanels to GPU
-            sequences, labels = sequences.cuda(), labels.cuda()
+            sequences, labels = sequences.to(self.device), labels.to(self.device)
             # Reset gradients from previous iteration
             self.optimizer.zero_grad()
 
             # Disable CuDNN for the forward pass to avoid double backward issues
             with torch.backends.cudnn.flags(enabled=False):
                 # Forward pass through the model with mixed precision
-                with amp.autocast():
+                with torch.autocast(device_type='cuda' if self.device.type == 'cuda' else 'cpu'):
                     output = self.model(sequences)
                     # Apply softmax to the output
                     output_softmax = F.softmax(output, dim=1)
@@ -532,10 +532,10 @@ class UnifiedTrainer:
         with torch.no_grad():
             for batch_idx, test_data in enumerate(test_loader):
                 sequences, labels = test_data
-                sequences, labels = sequences.cuda(), labels.cuda()
+                sequences, labels = sequences.to(self.device), labels.to(self.device)
 
                 # Forward pass through the model with mixed precision
-                with amp.autocast():
+                with torch.autocast(device_type='cuda' if self.device.type == 'cuda' else 'cpu'):
                     output = self.model(sequences)
                     # Apply softmax to the output
                     output_softmax = F.softmax(output, dim=1)

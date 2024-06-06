@@ -594,9 +594,9 @@ def save_params_to_json(df, *args):
     param_names = [
         'model', 'id_number', 'years', 'test_type','windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
-        'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
+        'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method'
+        'search_method', 'fillna_method', 'pca_components'
     ]
 
     # Assign values directly from the dictionary
@@ -692,18 +692,18 @@ def initialize_classification(*args):
     param_names = [
         'model', 'id_number', 'years', 'test_type', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
-        'history_signal', 'classifier', 'perform_features_extraction', 'cuda_dev',
+        'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method', 'fillna_method'
+        'search_method', 'fillna_method', 'pca_components'
     ]
 
     # Assign values directly from the dictionary
     (
         model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
-        history_signal, classifier, perform_features_extraction, CUDA_DEV,
+        history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method
+        search_method, fillna_method, pca_components
     ) = dict(zip(param_names, args)).values()
     # here you can select the model. This is the one tested.
     # Correct years for the model
@@ -734,6 +734,10 @@ def initialize_classification(*args):
     logger.info(f'Logger initialized successfully! Current id number is: {id_number}')
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(script_dir, '..', 'output')
+    # Create the directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     try:
         # Step 1: Load the dataset from pkl file.
@@ -767,11 +771,6 @@ def initialize_classification(*args):
         for column in list(df):
             logger.info(f'{column:<27}.')
         logger.info(f'Saving to pickle file: {model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
-
-        output_dir = os.path.join(script_dir, '..', 'output')
-        # Create the directory if it doesn't exist
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
         df.to_pickle(os.path.join(output_dir, f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
     # Interpolate data for the rows with missing dates
@@ -783,9 +782,9 @@ def initialize_classification(*args):
     param_path = save_params_to_json(
         df, model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
-        history_signal, classifier, perform_features_extraction, CUDA_DEV,
+        history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method
+        search_method, fillna_method, pca_components
     )
 
     ## -------- ##
@@ -807,10 +806,33 @@ def initialize_classification(*args):
         oversample_undersample=oversample_undersample,
         fillna_method=fillna_method
     )
+    
+    # Print the line of Xtrain and Xtest
+    logger.info(f'Xtrain shape: {Xtrain.shape}, Xtest shape: {Xtest.shape}')
+
+    try:
+        data = np.load(os.path.join(output_dir, f'{model}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'))
+        Xtrain, Xtest, ytrain, ytest = data['Xtrain'], data['Xtest'], data['Ytrain'], data['Ytest']
+    except:
+        # Step x.1: Feature Extraction
+        if features_extraction_method == 'custom':
+            # Extract features for the train and test set
+            Xtrain = feature_extraction(Xtrain)
+            Xtest = feature_extraction(Xtest)
+        elif features_extraction_method == 'PCA':
+            Xtrain = feature_extraction_PCA(Xtrain, pca_components)
+            Xtest = feature_extraction_PCA(Xtest, pca_components)
+        elif features_extraction_method == 'None':
+            logger.info('Skipping features extraction for training data.')
+        else:
+            raise ValueError('Invalid features extraction method. Please choose either "custom" or "pca" or "None".')
+        # Save the arrays to a .npz file
+        np.savez(os.path.join(output_dir, f'{model}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'), Xtrain=Xtrain, Xtest=Xtest, Ytrain=ytrain, Ytest=ytest)
 
     # Step 1.6: Classifier Selection: set training parameters
     ####### CLASSIFIER PARAMETERS #######
-    os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
+    if CUDA_DEV != 'None':
+        os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
     if classifier == 'TCN':
         # Step 1.6.1: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
         batch_size = TRAINING_PARAMS['batch_size']
@@ -818,14 +840,10 @@ def initialize_classification(*args):
         weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
         epochs = TRAINING_PARAMS['epochs']
         optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']
+        reg = TRAINING_PARAMS['reg']        
+        # Calculate the data dimension based on the shape of the training data, the dimension of the Xtrain is the same as Xtest
+        data_dim = Xtrain.shape[2]
         num_inputs = Xtrain.shape[1]
-        # Calculate the data dimension based on the history signal and overlap.
-        if windowing == 1:
-            # If overlap == 1, the overlap option is chosed as complete overlap. If overlap == 2, the overlap option is chosed as dynamic overlap based on the factors of window_dim
-            data_dim = sum(number - 1 for number in factors(history_signal)) + 1 if overlap != 1 else history_signal
-        else:
-            data_dim = 1
         logger.info(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
         net = TCN_Network(data_dim, num_inputs)
         if torch.cuda.is_available():
@@ -1016,12 +1034,6 @@ def initialize_classification(*args):
         # Save the best parameters to a JSON file
         save_best_params_to_json(best_params, classifier, id_number)
     ## ---------------------------- ##
-
-    # Step x.1: Feature Extraction
-    if perform_features_extraction == True: 
-        # Extract features for the train and test set
-        Xtrain = feature_extraction(Xtrain)
-        Xtest = feature_extraction(Xtest)
     # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
     classifiers = [
         'RandomForest', 
