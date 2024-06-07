@@ -459,15 +459,16 @@ class UnifiedTrainer:
             sequences, labels = sequences.to(self.device), labels.to(self.device)
             # Reset gradients from previous iteration
             self.optimizer.zero_grad()
-
-            # Forward pass through the model
-            output = self.model(sequences)
-            # Apply softmax to the output
-            output_softmax = F.softmax(output, dim=1)
-            # Calculate loss between model output and true labels
-            loss = criterion(output, labels)
-            # Calculate the total loss (error + penalty)
-            total_loss = self.calculate_total_loss(loss, self.reg)
+            # Disable CuDNN for the forward pass to avoid double backward issues
+            with torch.backends.cudnn.flags(enabled=False):
+                # Forward pass through the model
+                output = self.model(sequences)
+                # Apply softmax to the output
+                output_softmax = F.softmax(output, dim=1)
+                # Calculate loss between model output and true labels
+                loss = criterion(output, labels)
+                # Calculate the total loss (error + penalty)
+                total_loss = self.calculate_total_loss(loss, self.reg)
 
             # Backward pass and parameter update
             total_loss.backward()
