@@ -13,6 +13,7 @@ import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import grad
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 
 def report_metrics(Y_test_real, prediction, metric, writer, iteration):
@@ -343,8 +344,8 @@ class TCNDataset(torch.utils.data.Dataset):
 
     def __init__(self, x, y):
         # No need to swap axes for TCN, keep the shape as (num_samples, num_timesteps, num_features)
-        self.x_tensors = {i : torch.as_tensor(x[i], dtype=torch.float32) for i in range(x.shape[0])}
-        self.y_tensors = {i : torch.as_tensor(y[i], dtype=torch.int64) for i in range(y.shape[0])}
+        self.x_tensors = torch.as_tensor(x, dtype=torch.float32)
+        self.y_tensors = torch.as_tensor(y, dtype=torch.int64)
 
     def __len__(self):
         """
@@ -353,7 +354,7 @@ class TCNDataset(torch.utils.data.Dataset):
         Returns:
             int: Number of samples.
         """
-        return len(self.x_tensors.keys())
+        return len(self.x_tensors)
 
     def __getitem__(self, idx):
         """
@@ -368,7 +369,7 @@ class TCNDataset(torch.utils.data.Dataset):
         return (self.x_tensors[idx], self.y_tensors[idx])
 
 class UnifiedTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number, model_type):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number, model_type, num_workers):
         """
         Initialize the UnifiedTrainer with all necessary components.
 
@@ -381,6 +382,7 @@ class UnifiedTrainer:
             reg (float): Regularization factor.
             id_number (int): The ID number of the model.
             model_type (str): The type of model ('LSTM', 'TCN', 'MLP').
+            num_workers (int): Number of workers for the DataLoader.
         """
         self.model = model
         self.optimizer = optimizer
@@ -390,6 +392,7 @@ class UnifiedTrainer:
         self.reg = reg
         self.id_number = id_number
         self.model_type = model_type
+        self.num_workers = num_workers
         self.train_writer = SummaryWriter(f'runs/{model_type}_Training_Graph')
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         self.test_writer = SummaryWriter(f'runs/{model_type}_Test_Graph')
@@ -426,12 +429,13 @@ class UnifiedTrainer:
         total_loss = reg * error + (1 - reg) * penalty
         return total_loss
 
-    def train(self, train_loader, epoch):
+    def train(self, train_loader, train_loader_tqdm, epoch):
         """
         Trains the LSTM model using the given training data.
 
         Args:
             train_loader (torch.utils.data.DataLoader): The training data loader.
+            train_loader_tqdm (tqdm): The tqdm wrapper for the training data loader.
             epoch (int): The current epoch number.
 
         Returns:
@@ -448,35 +452,26 @@ class UnifiedTrainer:
         predictions = np.zeros((len(train_loader.dataset), 2))  # Store the model's predictions
         true_labels = np.zeros(len(train_loader.dataset))  # Store the true labels
 
-        # Initialize GradScaler for mixed precision training
-        scaler = torch.GradScaler()
-
-        for batch_idx, data in enumerate(train_loader):
+        for batch_idx, data in enumerate(train_loader_tqdm):
             # Input sequences and their corresponding labels
             sequences, labels = data
-            # Move sequences and lanels to GPU
+            # Move sequences and labels to GPU
             sequences, labels = sequences.to(self.device), labels.to(self.device)
             # Reset gradients from previous iteration
             self.optimizer.zero_grad()
 
-            # Disable CuDNN for the forward pass to avoid double backward issues
-            with torch.backends.cudnn.flags(enabled=False):
-                # Forward pass through the model with mixed precision
-                with torch.autocast(device_type='cuda' if self.device.type == 'cuda' else 'cpu'):
-                    output = self.model(sequences)
-                    # Apply softmax to the output
-                    output_softmax = F.softmax(output, dim=1)
-                    # Calculate loss between model output and true labels
-                    loss = criterion(output, labels)
-                    # Calculate the total loss (error + penalty)
-                    total_loss = self.calculate_total_loss(loss, self.reg)
+            # Forward pass through the model
+            output = self.model(sequences)
+            # Apply softmax to the output
+            output_softmax = F.softmax(output, dim=1)
+            # Calculate loss between model output and true labels
+            loss = criterion(output, labels)
+            # Calculate the total loss (error + penalty)
+            total_loss = self.calculate_total_loss(loss, self.reg)
 
-            # Scale the loss and call backward
-            scaler.scale(total_loss).backward()
-            # Update model parameters with scaled gradients
-            scaler.step(self.optimizer)
-            # Update the scale for next iteration
-            scaler.update()
+            # Backward pass and parameter update
+            total_loss.backward()
+            self.optimizer.step()
             # Store the predicted labels for this batch in the predictions array
             predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().detach().numpy()
             # Store the true labels for this batch in the true_labels array
@@ -513,12 +508,13 @@ class UnifiedTrainer:
         print('\n')
         return report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.train_writer, epoch)
 
-    def test(self, test_loader, epoch):
+    def test(self, test_loader, test_loader_tqdm, epoch):
         """
         Test the LSTM model on the test dataset.
 
         Args:
             test_loader (torch.utils.data.DataLoader): The test data loader.
+            test_loader_tqdm (tqdm): The tqdm wrapper for the test data loader.
             epoch (int): The current epoch number.
 
         Returns:
@@ -530,16 +526,15 @@ class UnifiedTrainer:
         true_labels = np.zeros(len(test_loader.dataset))
     
         with torch.no_grad():
-            for batch_idx, test_data in enumerate(test_loader):
+            for batch_idx, test_data in enumerate(test_loader_tqdm):
                 sequences, labels = test_data
                 sequences, labels = sequences.to(self.device), labels.to(self.device)
 
-                # Forward pass through the model with mixed precision
-                with torch.autocast(device_type='cuda' if self.device.type == 'cuda' else 'cpu'):
-                    output = self.model(sequences)
-                    # Apply softmax to the output
-                    output_softmax = F.softmax(output, dim=1)
-                    loss = criterion(output, labels)
+                # Forward pass through the model
+                output = self.model(sequences)
+                # Apply softmax to the output
+                output_softmax = F.softmax(output, dim=1)
+                loss = criterion(output, labels)
 
                 # Store the predictions and true labels for this batch
                 predictions[(batch_idx * self.batch_size):((batch_idx + 1) * self.batch_size), :] = output_softmax.cpu().numpy()
@@ -572,15 +567,19 @@ class UnifiedTrainer:
             ytest (np.ndarray): The testing target data.
         """
         if self.model_type == 'LSTM':
-            train_loader = DataLoader(FPLSTMDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
-            test_loader = DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate)
+            train_loader = DataLoader(FPLSTMDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate, pin_memory=True, num_workers=self.num_workers, prefetch_factor=10, persistent_workers=True)
+            test_loader = DataLoader(FPLSTMDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, collate_fn=self.FPLSTM_collate, pin_memory=True, num_workers=self.num_workers, prefetch_factor=10, persistent_workers=True)
         else:
-            train_loader = DataLoader(TCNDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True)
-            test_loader = DataLoader(TCNDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True)
+            train_loader = DataLoader(TCNDataset(Xtrain, ytrain), batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=self.num_workers, prefetch_factor=10, persistent_workers=True)
+            test_loader = DataLoader(TCNDataset(Xtest, ytest), batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=self.num_workers, prefetch_factor=10, persistent_workers=True)
+
+        # Wrap the DataLoader with tqdm
+        train_loader_tqdm = tqdm(train_loader)
+        test_loader_tqdm = tqdm(test_loader)
         F1_list = deque(maxlen=5)
         for epoch in range(1, self.epochs):
-            F1 = self.train(train_loader, epoch)
-            self.test(test_loader, epoch)
+            F1 = self.train(train_loader, train_loader_tqdm, epoch)
+            self.test(test_loader, test_loader_tqdm, epoch)
             F1_list.append(F1)
 
             if len(F1_list) == 5 and len(set(F1_list)) == 1:

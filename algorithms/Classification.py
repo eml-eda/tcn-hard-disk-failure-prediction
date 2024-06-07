@@ -40,6 +40,7 @@ TRAINING_PARAMS = {
     'hidden_size': 8,  # DenseNet
     'num_layers': 1,  # NNet
     'optimizer_type': 'Adam',
+    'num_workers': 8
 }
 
 def save_best_params_to_json(best_params, classifier_name, id_number):
@@ -452,7 +453,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number'],
-            model_type='TCN'
+            model_type='TCN',
+            num_workers=args['num_workers']
         )
         # Run training and testing using the TCNTrainer
         return tcn_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -466,7 +468,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number'],
-            model_type='LSTM'
+            model_type='LSTM',
+            num_workers=args['num_workers']
         )
         # Run training and testing using the TCNTrainer
         return lstm_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -480,7 +483,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number'],
-            model_type='NNet'
+            model_type='NNet',
+            num_workers=args['num_workers']
         )
         # Run training and testing using the TCNTrainer
         return nnet_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -494,7 +498,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number'],
-            model_type='DenseNet'
+            model_type='DenseNet',
+            num_workers=args['num_workers']
         )
         # Run training and testing using the TCNTrainer
         return densenet_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -509,7 +514,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             lr=args['lr'],                          # Learning rate
             reg=args['reg'],                        # Regularization parameter
             id_number=args['id_number'],
-            model_type='MLP'
+            model_type='MLP',
+            num_workers=args['num_workers']
         )
         # Run training and testing using the MLPTrainer
         return mlp_trainer.run(X_train, Y_train, X_test, Y_test)
@@ -630,7 +636,7 @@ def save_params_to_json(df, *args):
     return file_path
 
 def set_training_params(*args):
-    param_names = ['reg', 'batch_size', 'lr', 'weight_decay', 'epochs', 'dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'hidden_size', 'num_layers', 'optimizer_type']
+    param_names = ['reg', 'batch_size', 'lr', 'weight_decay', 'epochs', 'dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'hidden_size', 'num_layers', 'optimizer_type', 'num_workers']
     # Use the global keyword when modifying global variables
     global TRAINING_PARAMS
     TRAINING_PARAMS = dict(zip(param_names, args))
@@ -840,7 +846,8 @@ def initialize_classification(*args):
         weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
         epochs = TRAINING_PARAMS['epochs']
         optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']        
+        reg = TRAINING_PARAMS['reg']
+        num_workers = TRAINING_PARAMS['num_workers']
         # Calculate the data dimension based on the shape of the training data, the dimension of the Xtrain is the same as Xtest
         data_dim = Xtrain.shape[2]
         num_inputs = Xtrain.shape[1]
@@ -885,6 +892,7 @@ def initialize_classification(*args):
         fc1_hidden_s = TRAINING_PARAMS['fc1_hidden_s']
         optimizer_type = TRAINING_PARAMS['optimizer_type']
         reg = TRAINING_PARAMS['reg']
+        num_workers = TRAINING_PARAMS['num_workers']
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
         if torch.cuda.is_available():
@@ -925,6 +933,7 @@ def initialize_classification(*args):
         hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
         optimizer_type = TRAINING_PARAMS['optimizer_type']
         reg = TRAINING_PARAMS['reg']
+        num_workers = TRAINING_PARAMS['num_workers']
         logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
         net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
         if torch.cuda.is_available():
@@ -964,6 +973,7 @@ def initialize_classification(*args):
         num_layers = TRAINING_PARAMS['num_layers']
         optimizer_type = TRAINING_PARAMS['optimizer_type']
         reg = TRAINING_PARAMS['reg']
+        num_workers = TRAINING_PARAMS['num_workers']
         num_inputs = Xtrain.shape[2]  # Number of features in the input (32)
         logger.info(f'number of inputs: {num_inputs}, hidden_dim: {hidden_dim}')
         net = NNet(input_size=num_inputs, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
@@ -1003,6 +1013,7 @@ def initialize_classification(*args):
         hidden_size = TRAINING_PARAMS['hidden_size']  # Example hidden dimension, can be adjusted
         optimizer_type = TRAINING_PARAMS['optimizer_type']
         reg = TRAINING_PARAMS['reg']
+        num_workers = TRAINING_PARAMS['num_workers']
         num_inputs = Xtrain.shape[1]
         logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
         net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
@@ -1068,7 +1079,8 @@ def initialize_classification(*args):
             batch_size=batch_size,
             lr=lr,
             reg=reg,
-            id_number=id_number
+            id_number=id_number,
+            num_workers=num_workers
         )
     except:
         # Parameters for RandomForest

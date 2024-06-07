@@ -79,6 +79,7 @@ training_param_iface = gr.Interface(
         gr.Slider(minimum=1, maximum=32, step=1, value=8, label='DenseNet Hidden Dimension', info='DenseNet hidden dimension for training. (x*x)'),
         gr.Slider(minimum=1, maximum=4, step=1, value=1, label='NNet Number of Layers', info='NNet number of layers for training.'),
         gr.Dropdown(choices=['Adam', 'SGD'], value='Adam', label='Optimizer', info='Select the optimizer for training.'),
+        gr.Slider(minimum=1, maximum=16, step=1, value=8, label='Number of Workers for DataLoader', info='Number of workers for DataLoader.'),
     ],
     outputs=gr.Textbox(placeholder="See updated parameters below.", label="Updated Parameters"),
     description="Training Parameters for Predicting System Failures using Machine Learning Techniques",  # Description of the interface
