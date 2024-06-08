@@ -10,7 +10,7 @@
   - [Wiki](#wiki)
   - [How to run the code](#how-to-run-the-code)
   - [Core Parts of this Algorithm](#core-parts-of-this-algorithm)
-- [Articles](#articles)
+  - [Articles](#articles)
   - [TODO](#todo)
   - [Future Work for Algorithm](#future-work-for-algorithm)
 
@@ -168,6 +168,7 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
 4. [ ] Refactor the Python scripts in the `algorithm` folder using jupyter notebook, do not directly import the Python scripts in the `algorithm` folder.
 5. [ ] Add a visual interface for `dataset_creation.ipynb` for adjusting the parameters.
 6. [ ] Add multiple disk support for dataset input.
+7. [ ] Add dataset re-train for transfer learning.
 
 ## Future Work for Algorithm
 

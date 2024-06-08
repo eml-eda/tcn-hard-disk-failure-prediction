@@ -33,7 +33,8 @@ args = parser.parse_args()
 main_iface = gr.Interface(
     fn=initialize_classification,
     inputs=[
-        gr.Textbox(value='ST3000DM001', label='Model', info='Enter the model type(s). For multiple models, separate them with commas.'),
+        gr.Dropdown(choices=['ST', 'WDC', 'Hitachi', 'custom'], value='custom', label='Manufacturer', info='Select the manufacturer of the hard disk, custom for custom model.'),
+        gr.Textbox(value='ST3000DM001', label='Model', info='Enter the model type(s) for training. For multiple models, separate them with commas.'),
         gr.Textbox(value='01234567', label='ID Number', info='Enter the ID number(s).'),
         gr.CheckboxGroup(choices=['2013', '2014', '2015', '2016', '2017', '2018', '2019'], value=['2013'], label='Years', info='Select the years to consider.'),
         gr.Dropdown(choices=['t-test', 'mannwhitneyu'], value='t-test', label='Statistical Tests', info='Select the statistical tests to extract features.'),
@@ -55,6 +56,7 @@ main_iface = gr.Interface(
         gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Select the search technique.'),
         gr.Dropdown(choices=['ffill', 'None'], value='None', label='Fill NA Method', info='Select the method to fill NA values.'),
         gr.Slider(minimum=1, maximum=8, step=1, value=8, label='PCA Components', info='Select the number of PCA components to generate.'),
+        gr.Checkbox(value=False, label='Enable Transfer Learning', info='Check to enable transfer learning.'),
     ],
     outputs=[
         gr.File(label='Download Log File', type='filepath'),

@@ -1,7 +1,6 @@
 import os
 import pandas as pd
 import numpy as np
-# import datetime
 from glob import glob
 from config import *
 
@@ -20,20 +19,22 @@ for year in years:
             print(f"Error: The file {file_path} does not exist.")
             continue
 
-        # Filter the model with the chosen model
-        model_chosen = file_r[file_r['model'] == model]
-        #print(f"Number of entries after filtering by model: {len(model_chosen)}")
-        
-        # Print processing day
-        print('processing day ' + str(model_chosen['date'].values))
+        # Iterate over each model in the list
+        for model in models:
+            # Filter the model with the chosen model
+            model_chosen = file_r[file_r['model'] == model]
+            #print(f"Number of entries after filtering by model: {len(model_chosen)}")
 
-        if failed:
-            # Filter the failed hard drives
-            model_chosen = model_chosen[model_chosen['failure'] == 1]
-            print(f"Number of entries after filtering by failure: {len(model_chosen)}")
+            # Print processing day
+            print('processing day ' + str(model_chosen['date'].values))
 
-        # Append serial numbers
-        list_failed.extend(model_chosen['serial_number'].values)
+            if failed:
+                # Filter the failed hard drives
+                model_chosen = model_chosen[model_chosen['failure'] == 1]
+                print(f"Number of entries after filtering by failure: {len(model_chosen)}")
+
+            # Append serial numbers
+            list_failed.extend(model_chosen['serial_number'].values)
 
 # Save the list of failed or all hard drives
 np.save(hdd_model_file_path, list_failed)

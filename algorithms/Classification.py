@@ -522,7 +522,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     elif classifier == 'MLP':
         # Step 1.7.8: Perform Classification using MLP.
         model = MLPClassifier()
-        
+
         # Define the parameter grid
         param_grid = {
             'hidden_layer_sizes': [(50,50,50), (50,100,50), (100,)],
@@ -696,21 +696,23 @@ def initialize_classification(*args):
     
     # Define parameter names and create a dictionary of params
     param_names = [
-        'model', 'id_number', 'years', 'test_type', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
+        'manufacturer', 'model', 'id_number', 'years', 'test_type', 'windowing', 'min_days_hdd', 'days_considered_as_failure',
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method', 'fillna_method', 'pca_components'
+        'search_method', 'fillna_method', 'pca_components', 'transfer_learning'
     ]
 
     # Assign values directly from the dictionary
     (
-        model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
+        manufacturer, model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method, pca_components
+        search_method, fillna_method, pca_components, transfer_learning
     ) = dict(zip(param_names, args)).values()
+    models = [m.strip() for m in model.split(',')]
+    model_string = "_".join(models)
     # here you can select the model. This is the one tested.
     # Correct years for the model
     # Select the statistical methods to extract features
@@ -747,13 +749,18 @@ def initialize_classification(*args):
 
     try:
         # Step 1: Load the dataset from pkl file.
-        df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        logger.info(f'Loading file from pickle file: {model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
     except:
         # Step 1.1: Import the dataset from the raw data.
         if ranking == 'None':
-            df = import_data(years=years, model=model, name='iSTEP', features=features)
+            df = import_data(years=years, models=models, name='iSTEP', features=features, manufacturer=manufacturer)
         else:
-            df = import_data(years=years, model=model, name='iSTEP')
+            df = import_data(years=years, models=models, name='iSTEP', manufacturer=manufacturer)
+
+        # Check if the DataFrame is empty
+        if df.empty:
+            raise ValueError("The DataFrame is empty. Please check your data source.")
 
         logger.info('Data imported successfully, processing smart attributes...')
         for column in list(df):
@@ -776,17 +783,24 @@ def initialize_classification(*args):
         logger.info('Used features')
         for column in list(df):
             logger.info(f'{column:<27}.')
-        logger.info(f'Saving to pickle file: {model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
-        df.to_pickle(os.path.join(output_dir, f'{model}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+        logger.info(f'Saving to pickle file: {model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
+        df.to_pickle(os.path.join(output_dir, f'{model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
+
+    if manufacturer != 'custom':
+        relevant_models, irrelevant_models = find_relevant_models(df)
 
     # Interpolate data for the rows with missing dates
     if interpolate_technique != 'None':
         df = interpolate_ts(df, method=interpolate_technique)
 
+    # TODO: (Unfinished) Filter the original DataFrame based on the 'model' column
+    relevant_df = df[df['model'].isin(relevant_models)]
+    irrelevant_df = df[df['model'].isin(irrelevant_models)]
+
     # Saving parameters to json file
     logger.info('Saving parameters to json file...')
     param_path = save_params_to_json(
-        df, model, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
+        df, model_string, id_number, years, test_type, windowing, min_days_HDD, days_considered_as_failure,
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
@@ -800,7 +814,7 @@ def initialize_classification(*args):
     # Step 1.5: Partition the dataset into training and testing sets. Partition Dataset: Subflow chart of Main Classification Process
     Xtrain, Xtest, ytrain, ytest = DatasetPartitioner(
         df,
-        model,
+        model_string,
         overlap=overlap,
         rank=ranking,
         num_features=num_features,
@@ -817,7 +831,7 @@ def initialize_classification(*args):
     logger.info(f'Xtrain shape: {Xtrain.shape}, Xtest shape: {Xtest.shape}')
 
     try:
-        data = np.load(os.path.join(output_dir, f'{model}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'))
+        data = np.load(os.path.join(output_dir, f'{model_string}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'))
         Xtrain, Xtest, ytrain, ytest = data['Xtrain'], data['Xtest'], data['Ytrain'], data['Ytest']
     except:
         # Step x.1: Feature Extraction
@@ -832,8 +846,48 @@ def initialize_classification(*args):
             logger.info('Skipping features extraction for training data.')
         else:
             raise ValueError('Invalid features extraction method. Please choose either "custom" or "pca" or "None".')
+        logger.info(f'Saving training and testing data to file: {model_string}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz')
         # Save the arrays to a .npz file
-        np.savez(os.path.join(output_dir, f'{model}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'), Xtrain=Xtrain, Xtest=Xtest, Ytrain=ytrain, Ytest=ytest)
+        np.savez(os.path.join(output_dir, f'{model_string}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'), Xtrain=Xtrain, Xtest=Xtest, Ytrain=ytrain, Ytest=ytest)
+
+    ## ---------------------------- ##
+    # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
+    classifiers = [
+        'RandomForest', 
+        'KNeighbors', 
+        'DecisionTree', 
+        'LogisticRegression', 
+        'SVM', 
+        'XGB', 
+        'MLP', 
+        'IsolationForest', 
+        'ExtraTrees', 
+        'GradientBoosting', 
+        'NaiveBayes', 
+        'DBSCAN'
+    ]
+    if classifier in classifiers and windowing == 1:
+        Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
+        Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
+
+    # TODO:
+    return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, classifier, CUDA_DEV, search_method, transfer_learning, param_path)
+
+def perform_classification(*args):
+    # TODO: The following code should be separated into a different function
+    # Define parameter names and create a dictionary of params
+    param_names = [
+        'Xtrain', 'ytrain', 'Xtest', 'ytest',
+        'id_number', 'classifier', 'cuda_dev',
+        'search_method', 'transfer_learning', 'param_path'
+    ]
+
+    # Assign values directly from the dictionary
+    (
+        Xtrain, ytrain, Xtest, ytest,
+        id_number, classifier, CUDA_DEV,
+        search_method, transfer_learning, param_path
+    ) = dict(zip(param_names, args)).values()
 
     # Step 1.6: Classifier Selection: set training parameters
     ####### CLASSIFIER PARAMETERS #######
@@ -853,19 +907,40 @@ def initialize_classification(*args):
         num_inputs = Xtrain.shape[1]
         logger.info(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
         net = TCN_Network(data_dim, num_inputs)
-        if torch.cuda.is_available():
-            logger.info('Moving model to cuda')
-            net.cuda()
+        # TODO: Add transfer learning
+        if transfer_learning:
+            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+            # Freeze specific layers (b0, b1, b2)
+            for name, param in net.named_parameters():
+                if 'b0_' in name or 'b1_' in name or 'b2_' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
         else:
-            logger.info('Model to cpu')
-        if optimizer_type == 'Adam':
-            # We use the Adam optimizer, a method for Stochastic Optimization
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            # We use the Stochastic Gradient Descent optimizer
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -895,19 +970,41 @@ def initialize_classification(*args):
         num_workers = TRAINING_PARAMS['num_workers']
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
-        if torch.cuda.is_available():
-            logger.info('Moving model to cuda')
-            net.cuda()
+        # TODO: Add transfer learning
+        if transfer_learning:
+            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+            # Freeze specific layers (lstm and dropout)
+            for name, param in net.named_parameters():
+                if 'lstm' in name or 'do1' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
         else:
-            logger.info('Model to cpu')
-        if optimizer_type == 'Adam':
-            # We use the Adam optimizer, a method for Stochastic Optimization
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            # We use the Stochastic Gradient Descent optimizer
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -936,19 +1033,42 @@ def initialize_classification(*args):
         num_workers = TRAINING_PARAMS['num_workers']
         logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
         net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
-        if torch.cuda.is_available():
-            logger.info('Moving model to cuda')
-            net.cuda()
+        # TODO: Add transfer learning
+        if transfer_learning:
+            # Load the pre-trained model
+            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+
+            # Freeze the initial layers (lin1 and lin2), fine-tune the rest
+            for name, param in net.named_parameters():
+                if 'lin1' in name or 'lin2' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
         else:
-            logger.info('Model to cpu')
-        if optimizer_type == 'Adam':
-            # We use the Adam optimizer, a method for Stochastic Optimization
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            # We use the Stochastic Gradient Descent optimizer
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -977,19 +1097,43 @@ def initialize_classification(*args):
         num_inputs = Xtrain.shape[2]  # Number of features in the input (32)
         logger.info(f'number of inputs: {num_inputs}, hidden_dim: {hidden_dim}')
         net = NNet(input_size=num_inputs, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
-        if torch.cuda.is_available():
-            logger.info('Moving model to cuda')
-            net.cuda()
+        # TODO: Add transfer learning
+        if transfer_learning:
+            # Load the pre-trained model
+            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+
+            # Freeze the LSTM layers (rnn), fine-tune the rest
+            for name, param in net.named_parameters():
+                if 'rnn' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
         else:
-            logger.info('Model to cpu')
-        if optimizer_type == 'Adam':
-            # We use the Adam optimizer, a method for Stochastic Optimization
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            # We use the Stochastic Gradient Descent optimizer
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+            if torch.cuda.is_available():
+                logger.info('Moving model to cuda')
+                net.cuda()
+            else:
+                logger.info('Model to cpu')
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -1017,19 +1161,42 @@ def initialize_classification(*args):
         num_inputs = Xtrain.shape[1]
         logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
         net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
-        if torch.cuda.is_available():
-            logger.info('Moving model to cuda')
-            net.cuda()
+        # TODO: Add transfer learning
+        if transfer_learning:
+            # Load the pre-trained model
+            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+
+            # Freeze the initial linear layers (layers.0 and layers.2), fine-tune the rest
+            for name, param in net.named_parameters():
+                if 'layers.0' in name or 'layers.2' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
         else:
-            logger.info('Model to cpu')
-        if optimizer_type == 'Adam':
-            # We use the Adam optimizer, a method for Stochastic Optimization
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            # We use the Stochastic Gradient Descent optimizer
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            logger.info(f'Moving model to {device}')
+            net.to(device)
+
+            if optimizer_type == 'Adam':
+                # We use the Adam optimizer, a method for Stochastic Optimization
+                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+            elif optimizer_type == 'SGD':
+                # We use the Stochastic Gradient Descent optimizer
+                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+            else:
+                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
 
         # Define the best parameters
         best_params = {
@@ -1044,25 +1211,6 @@ def initialize_classification(*args):
 
         # Save the best parameters to a JSON file
         save_best_params_to_json(best_params, classifier, id_number)
-    ## ---------------------------- ##
-    # Step x.2: Reshape the data for RandomForest: We jumped from Step 1.6.1, use third-party RandomForest library
-    classifiers = [
-        'RandomForest', 
-        'KNeighbors', 
-        'DecisionTree', 
-        'LogisticRegression', 
-        'SVM', 
-        'XGB', 
-        'MLP', 
-        'IsolationForest', 
-        'ExtraTrees', 
-        'GradientBoosting', 
-        'NaiveBayes', 
-        'DBSCAN'
-    ]
-    if classifier in classifiers and windowing == 1:
-        Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
-        Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
     try:
         # Parameters for TCN and LSTM networks

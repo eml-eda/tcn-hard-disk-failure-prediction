@@ -190,12 +190,30 @@ class MLP(nn.Module):
 
 class NNet(nn.Module):
     def __init__(self, input_size, hidden_dim=4, num_layers=1, dropout=0.1):
+        """
+        Initializes the Networks_pytorch class.
+
+        Args:
+            input_size (int): The size of the input.
+            hidden_dim (int, optional): The number of features in the hidden state. Defaults to 4.
+            num_layers (int, optional): Number of recurrent layers. Defaults to 1.
+            dropout (float, optional): Dropout probability. Defaults to 0.1.
+        """
         super().__init__()
         self.rnn = nn.LSTM(input_size=input_size, hidden_size=hidden_dim, num_layers=num_layers, dropout=dropout,
                            batch_first=True)
         self.linear = nn.Linear(hidden_dim, 2)
 
     def forward(self, input):
+        """
+        Performs the forward pass of the network.
+
+        Args:
+            input: The input tensor.
+
+        Returns:
+            out: The output tensor.
+        """
         _, (h_n, _) = self.rnn(input)
         repr_ = h_n[-1]
         out = self.linear(repr_)
@@ -203,6 +221,16 @@ class NNet(nn.Module):
 
 class DenseNet(nn.Module):
     def __init__(self, input_size, hidden_size=8):
+        """
+        Initializes a Networks_pytorch object.
+
+        Args:
+            input_size (int): The size of the input layer.
+            hidden_size (int or tuple): The size of the hidden layer(s). If a tuple is provided, it should contain two integers representing the sizes of the two hidden layers. Defaults to 8.
+
+        Returns:
+            None
+        """
         hs1, hs2 = hidden_size
         super().__init__()
         self.layers = nn.Sequential(
@@ -212,6 +240,15 @@ class DenseNet(nn.Module):
         )
 
     def forward(self, input):
+        """
+        Performs a forward pass through the network.
+
+        Args:
+            input: The input tensor.
+
+        Returns:
+            The output tensor after passing through the network.
+        """
         out = self.layers(input)
         return out
 

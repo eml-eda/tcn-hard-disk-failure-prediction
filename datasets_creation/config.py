@@ -1,7 +1,9 @@
 import os
 
 base_url = 'https://f001.backblazeb2.com/file/Backblaze-Hard-Drive-Data/'
-model = 'ST3000DM001'
+models = ['ST3000DM001']
+
+model = "_".join(models)
 
 # zips contain different directory names or no directory at all, which causes
 # unavoidable "spaghettiness" in the code

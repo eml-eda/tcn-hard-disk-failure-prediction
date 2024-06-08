@@ -21,6 +21,8 @@ from GeneticFeatureSelector import GeneticFeatureSelector
 from hmmlearn import hmm
 from imblearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
+from scipy.stats import pearsonr
+from sklearn.metrics import pairwise_distances
 
 
 def plot_feature(dataset):
@@ -37,7 +39,7 @@ def plot_feature(dataset):
     Y = dataset['Y']
     feat = X[:,10]
     np.arange(len(feat))
-    fig,ax = plt.subplots()
+    fig, ax = plt.subplots()
     ax.scatter(np.arange(len(feat[Y==0])),feat[Y==0], color ='C0', label='good HDD')
     ax.scatter(np.arange(len(feat[Y==0]),len(feat)),feat[Y==1],color ='C1',label='failed HDD')
     ax.set_ylabel('SMART feature [#]', fontsize=14, fontweight='bold', color = 'C0')
@@ -249,11 +251,11 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
 
     return dataset
 
-def import_data(years, model, name, **args):
+def import_data(years, models, name, **args):
     """ Import hard drive data from csvs on disk.
     
     :param quarters: List of quarters to import (e.g., 1Q19, 4Q18, 3Q18, etc.)
-    :param model: String of the hard drive model number to import.
+    :param models: List of the hard drive model numbers to import.
     :param columns: List of the columns to import.
     :return: Dataframe with hard drive data.
     
@@ -263,14 +265,15 @@ def import_data(years, model, name, **args):
     years_list = '_' + '_'.join(years)
     failed = False  # This should be set based on your specific criteria or kept as a placeholder
     suffix = 'failed' if failed else 'all'
+    model_string = "_".join(models)
 
     # Fix the directory name as output
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file = os.path.join(script_dir, '..', 'output', f'HDD{years_list}_{suffix}_{model}_appended.pkl')
+    file = os.path.join(script_dir, '..', 'output', f'HDD{years_list}_{suffix}_{model_string}_appended.pkl')
 
     if not os.path.exists(file):
         # Fix the directory name
-        file = os.path.join(script_dir, '..', 'output', f'HDD{years_list}_{model}_all.pkl')
+        file = os.path.join(script_dir, '..', 'output', f'HDD{years_list}_{model_string}_all.pkl')
 
     try:
         df = pd.read_pickle(file)
@@ -279,6 +282,7 @@ def import_data(years, model, name, **args):
         logger.info('Creating new DataFrame from CSV files.')
         script_dir = os.path.dirname(os.path.abspath(__file__))
         all_data = []
+        unique_models = set()
 
         for y in tqdm(years, desc="Analyzing years"):
             # Fix the directory name
@@ -288,10 +292,20 @@ def import_data(years, model, name, **args):
                 else:
                     data = pd.read_csv(f, header=0, parse_dates=['date'])
 
-                data = data[data.model == model].copy()
-                data.failure = data.failure.astype('int')
-                all_data.append(data)
+                # Filter the data based on the model number or manufacturer prefix
+                # If the 'manufacturer' key is not found in the args dictionary or its value is 'custom', we use the 'model' key to filter the data
+                if args.get('manufacturer', 'custom') != 'custom':
+                    model_data = data[data['model'].str.startswith(args['manufacturer'])].copy()
+                    unique_models.update(model_data['model'].unique())
+                    all_data.append(model_data)  # Append the filtered data to all_data
+                else:
+                    for model in models:
+                        model_data = data[data.model == model].copy()
+                        unique_models.add(model)
+                        model_data.failure = model_data.failure.astype('int')
+                        all_data.append(model_data)
 
+        logger.info(f"Unique models: {unique_models}")
         df = pd.concat(all_data, ignore_index=True)
         df.set_index(['serial_number', 'date'], inplace=True)
         df.sort_index(inplace=True)
@@ -321,7 +335,7 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
     bad_missing_hds = []
 
     # Loop over each group in the DataFrame, grouped by the first level of the index (serial number)
-    for serial_num, inner_df in df.groupby(level=0):
+    for serial_num, inner_df in tqdm(df.groupby(level=0), desc="Analyzing Hard Drives", unit="drive", ncols=100):
         if len(inner_df) < min_days:  # identify HDs with too few power-on days
             bad_power_hds.append(serial_num)
 
@@ -368,7 +382,7 @@ def interpolate_ts(df, method='linear'):
     interp_dfs = []
     total_interpolated = 0
 
-    for serial_num, inner_df in df.groupby(level=0):
+    for serial_num, inner_df in tqdm(df.groupby(level=0), desc="Interpolating groups", leave=False, unit="drive", ncols=100):
         inner_df = inner_df.droplevel(level=0).asfreq('D')
         # Count the number of NaN values before interpolation
         before_interpolation = inner_df.isna().sum().sum()
@@ -420,7 +434,7 @@ def generate_failure_predictions(df, days, window):
     group_sizes = df.groupby(level=0).size()
     df = df[df.index.get_level_values(0).isin(group_sizes[group_sizes > days + window].index)]
 
-    for i, (serial_num, inner_df) in enumerate(df.groupby(level=0), start=1):
+    for i, (serial_num, inner_df) in enumerate(tqdm(df.groupby(level=0), desc="Analyzing Hard Drives", unit="drive", ncols=100), start=1):
         print('Analyzing HD {} number {} \r'.format(serial_num,i), end="\r")
         slicer_val = len(inner_df)  # save len(df) to use as slicer value on smooth_smart_9
 
@@ -475,7 +489,7 @@ def feature_extraction(X):
     #X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
     #print(f'Similar slope: {X_feature[:,:,3]}')
     # Use Linear Regression to extract slope and intercept
-    for s in tqdm(range(samples), desc='Processing samples with LinearRegression'):
+    for s in tqdm(range(samples), desc='Processing samples with LinearRegression', unit='sample', ncols=100):
         for f in range(features):
             model = LinearRegression()
             model.fit(np.arange(dim_window).reshape(-1, 1), X[s, f, :])
@@ -484,7 +498,7 @@ def feature_extraction(X):
     #print(f'Coefficent: {X_feature[:,:,3]}')
     #print(f'Intercept: {X_feature[:,:,4]}')
     # Use HMM to generate state sequences
-    for f in tqdm(range(features), desc='Processing features with GaussianHMM'):
+    for f in tqdm(range(features), desc='Processing features with GaussianHMM', leave=False, unit='feature', ncols=100):
         feature_series = X[:, f, :]
         feature_series_reshaped = feature_series.reshape(-1, dim_window)
 
@@ -494,7 +508,7 @@ def feature_extraction(X):
         hmm_model.fit(feature_series_reshaped)
 
         # Generate state sequences for each sample
-        for s in tqdm(range(samples), desc='Generating state sequences for each sample', leave=False):
+        for s in tqdm(range(samples), desc='Generating state sequences for each sample', leave=False, unit='sample', ncols=100):
             state_seq = hmm_model.predict(feature_series[s].reshape(-1, 1))
             # Using the most frequent state as an additional feature
             most_frequent_state = np.bincount(state_seq).argmax()
@@ -1084,6 +1098,92 @@ class DatasetPartitioner:
         """
         return iter((self.Xtrain, self.Xtest, self.ytrain, self.ytest))
 
+
+def calculate_pearson_correlation_matrix(data):
+    """
+    Calculate the Pearson correlation matrix for the given data.
+    """
+    def safe_pearsonr(u, v):
+        if np.std(u) == 0 or np.std(v) == 0:
+            return np.nan
+        return pearsonr(u, v)[0]
+    # Fill NaN values with the mean of the column
+    data_filled = data.fillna(data.mean())
+    pairwise_corr = pairwise_distances(data_filled.T, metric=lambda u, v: safe_pearsonr(u, v))
+    return pd.DataFrame(pairwise_corr, index=data.columns, columns=data.columns)
+
+def find_relevant_models(df):
+    """
+    Calculate the correlation between different models based on smart attributes over time,
+    and determine the most relevant and irrelevant models based on the correlation.
+
+    Parameters:
+    df (pd.DataFrame): The input DataFrame containing 'date', 'model', 'serial_number' column, and 'smart*' attribute columns.
+
+    Returns:
+    relevant_models (list): List of relevant models.
+    irrelevant_models (list): List of irrelevant models.
+    """
+    # Create a copy of the DataFrame and reset index
+    df_copy = df.copy()
+    df_copy.reset_index(inplace=True)
+    
+    # Select columns starting with 'smart*'
+    smart_cols = [col for col in df_copy.columns if col.startswith('smart')]
+
+    # Ensure 'date' is in datetime format
+    df_copy['date'] = pd.to_datetime(df_copy['date'])
+
+    # Sort the DataFrame by 'date'
+    df_copy = df_copy.sort_values(by='date')
+
+    # Get the unique models
+    unique_models = df_copy['model'].unique()
+
+    # Initialize a dictionary to store weighted mean correlations
+    weighted_mean_correlations = {}
+
+    # Count the occurrences of each model
+    model_counts = df_copy['model'].value_counts()
+
+    for model in tqdm(unique_models, desc="Processing models", unit='model', ncols=100):
+        model_data = df_copy[df_copy['model'] == model][smart_cols].fillna(0)
+
+        correlations = []
+        for other_model in tqdm(unique_models, desc=f"Processing correlations for model {model}", leave=False, unit='model', ncols=100):
+            if model != other_model:
+                other_model_data = df_copy[df_copy['model'] == other_model][smart_cols].fillna(0)
+                combined_data = pd.concat([model_data.add_prefix(model + '_'), other_model_data.add_prefix(other_model + '_')], axis=1)
+                correlation_matrix = calculate_pearson_correlation_matrix(combined_data)
+                
+                for smart_col in smart_cols:
+                    col1 = model + '_' + smart_col
+                    col2 = other_model + '_' + smart_col
+                    corr_value = correlation_matrix.loc[col1, col2]
+                    correlations.append(corr_value)
+
+        if correlations:
+            # Weight the mean correlation by the count of the model
+            weighted_mean_correlations[model] = np.nanmean(correlations) * model_counts[model]
+        else:
+            weighted_mean_correlations[model] = 0
+
+    # Convert the weighted mean correlations to a DataFrame
+    mean_corr_df = pd.DataFrame.from_dict(weighted_mean_correlations, orient='index', columns=['weighted_mean_correlation'])
+
+    # Print the intermediate results for debugging
+    print("Weighted Mean Correlations:")
+    print(mean_corr_df)
+
+    # Define the threshold for relevance
+    threshold = mean_corr_df['weighted_mean_correlation'].mean()
+
+    # Identify the most relevant and irrelevant models based on the weighted mean correlation
+    relevant_models = mean_corr_df[mean_corr_df['weighted_mean_correlation'] > threshold].index.tolist()
+    irrelevant_models = mean_corr_df[mean_corr_df['weighted_mean_correlation'] <= threshold].index.tolist()
+
+    return relevant_models, irrelevant_models
+
 def feature_selection(df, num_features, test_type):
     """
     Selects the top 'num_features' features from the given dataframe based on statistical tests.
@@ -1112,6 +1212,9 @@ def feature_selection(df, num_features, test_type):
 
     # df = df[header + ['predict_val']]
 
+    # # Print the column name of the df
+    # print("TEST DF Column:", list(df.columns))
+
     # Step 1.4.1: Define empty lists and dictionary
     features = []
     dict1 = {}
@@ -1124,10 +1227,10 @@ def feature_selection(df, num_features, test_type):
         if 'raw' in feature:
             logger.info(f'Feature: {feature}')
 
-            if feature.replace('raw', 'normalized') in df.columns:
-                # (Not used) Pearson correlation to measure the linear relationship between two variables
-                correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
-                logger.info(f'Pearson correlation: {correlation:.3f}')
+            # if feature.replace('raw', 'normalized') in df.columns:
+            #     # (Not used) Pearson correlation to measure the linear relationship between two variables
+            #     correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
+            #     logger.info(f'Pearson correlation: {correlation:.3f}')
 
             # Select the statistical test based on test_type
             if test_type == 't-test':

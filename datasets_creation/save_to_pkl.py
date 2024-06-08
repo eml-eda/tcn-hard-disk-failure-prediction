@@ -22,16 +22,18 @@ for year in years:
         
         if file_date >= old_time:
             df = pd.read_csv(file_path)
-            model_chosen = df[df['model'] == model]
-            relevant_rows = model_chosen[model_chosen['serial_number'].isin(hdd_model_data)]
 
-            # Drop unnecessary columns since the following columns are not standard for all models
-            drop_columns = [col for col in relevant_rows if 'smart_' in col and int(col.split('_')[1]) in {22, 220, 222, 224, 226}]
-            relevant_rows.drop(columns=drop_columns, errors='ignore', inplace=True)
+            for model in models:
+                model_chosen = df[df['model'] == model]
+                relevant_rows = model_chosen[model_chosen['serial_number'].isin(hdd_model_data)]
 
-            # Append the row to the database
-            database = pd.concat([database, relevant_rows], ignore_index=True)
-            print('adding day ' + str(model_chosen['date'].values))
+                # Drop unnecessary columns since the following columns are not standard for all models
+                drop_columns = [col for col in relevant_rows if 'smart_' in col and int(col.split('_')[1]) in {22, 220, 222, 224, 226}]
+                relevant_rows.drop(columns=drop_columns, errors='ignore', inplace=True)
+
+                # Append the row to the database
+                database = pd.concat([database, relevant_rows], ignore_index=True)
+                print('adding day ' + str(model_chosen['date'].values))
 
 # Save the database to a pickle file
 database.to_pickle(hdd_model_pkl_file_path)

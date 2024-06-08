@@ -36,13 +36,18 @@ class GeneticFeatureSelector:
         Returns:
             None
         """
+        # A positive weight indicates that the genetic algorithm should try to maximize that objective,
+        # while a negative weight indicates that it should try to minimize that objective.
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+        # Fitness function
         creator.create("Individual", list, fitness=creator.FitnessMax)
 
         # Create toolbox
         self.toolbox.register("attr_bool", random.randint, 0, 1)
+        # Initialize the individual with random binary values
         self.toolbox.register("individual", tools.initRepeat,
                               creator.Individual, self.toolbox.attr_bool, len(self.X.columns))
+        # Initialize the population with individuals
         self.toolbox.register("population", tools.initRepeat, list,
                               self.toolbox.individual)
         self.toolbox.register("evaluate", self.get_fitness)
@@ -96,6 +101,7 @@ class GeneticFeatureSelector:
             # Apply classification algorithm
             clf = LogisticRegression()
 
+            # Calculate the average cross-validation score
             return (self.avg(cross_val_score(clf, X_subset, self.y, cv=5)),)
         else:
             return (0,)
@@ -133,7 +139,7 @@ class GeneticFeatureSelector:
         max_accuracy = 0.0
         best_individual = None
         for individual in self.hof:
-            if individual.fitness.values > max_accuracy:
+            if individual.fitness.values > max_accuracy:  # FIXME: TypeError: '>' not supported between instances of 'tuple' and 'float'
                 max_accuracy = individual.fitness.values
                 best_individual = individual
 
