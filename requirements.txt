@@ -9,6 +9,8 @@ torch==2.4.0
 wget==3.2
 tensorboard==2.16.2
 tqdm==4.66.4
-gradio==4.31.5
+gradio==4.36.1
 xgboost
 colorlog
+statsmodels
+rgf_python

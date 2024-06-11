@@ -253,7 +253,7 @@ class FPLSTMDataset(torch.utils.data.Dataset):
 
 class TCNDataset(torch.utils.data.Dataset):
     """
-    A PyTorch dataset class for time series data suitable for TCN model.
+    A PyTorch dataset class for the TCN model.
 
     Args:
         x (numpy.ndarray): Input data of shape (num_samples, num_timesteps, num_features).
@@ -265,14 +265,94 @@ class TCNDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, x, y):
-        self.x_tensors = {i: torch.tensor(x[i, :, :], dtype=torch.float32) for i in range(x.shape[0])}
-        self.y_tensors = {i: torch.tensor(y[i], dtype=torch.int64) for i in range(y.shape[0])}
+        # No need to swap axes for TCN, keep the shape as (num_samples, num_timesteps, num_features)
+        self.x_tensors = torch.as_tensor(x, dtype=torch.float32)
+        self.y_tensors = torch.as_tensor(y, dtype=torch.int64)
 
     def __len__(self):
+        """
+        Returns the number of samples in the dataset.
+
+        Returns:
+            int: Number of samples.
+        """
         return len(self.x_tensors)
 
     def __getitem__(self, idx):
-        return self.x_tensors[idx], self.y_tensors[idx]
+        """
+        Returns the data and label at the given index.
+
+        Args:
+            idx (int): Index of the sample.
+
+        Returns:
+            tuple: A tuple containing the input data tensor and the target label tensor.
+        """
+        return (self.x_tensors[idx], self.y_tensors[idx])
+
+class NNet(nn.Module):
+    def __init__(self, input_size, hidden_dim=4, num_layers=1, dropout=0.1):
+        """
+        Initializes the Networks_pytorch class.
+
+        Args:
+            input_size (int): The size of the input.
+            hidden_dim (int, optional): The number of features in the hidden state. Defaults to 4.
+            num_layers (int, optional): Number of recurrent layers. Defaults to 1.
+            dropout (float, optional): Dropout probability. Defaults to 0.1.
+        """
+        super().__init__()
+        self.rnn = nn.LSTM(input_size=input_size, hidden_size=hidden_dim, num_layers=num_layers, dropout=dropout,
+                           batch_first=True)
+        self.linear = nn.Linear(hidden_dim, 2)
+
+    def forward(self, input):
+        """
+        Performs the forward pass of the network.
+
+        Args:
+            input: The input tensor.
+
+        Returns:
+            out: The output tensor.
+        """
+        _, (h_n, _) = self.rnn(input)
+        repr_ = h_n[-1]
+        out = self.linear(repr_)
+        return out
+
+class DenseNet(nn.Module):
+    def __init__(self, input_size, hidden_size=8):
+        """
+        Initializes a Networks_pytorch object.
+
+        Args:
+            input_size (int): The size of the input layer.
+            hidden_size (int or tuple): The size of the hidden layer(s). If a tuple is provided, it should contain two integers representing the sizes of the two hidden layers. Defaults to 8.
+
+        Returns:
+            None
+        """
+        hs1, hs2 = hidden_size
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_size, hs1), nn.Tanh(),
+            nn.Linear(hs1, hs2), nn.Tanh(),
+            nn.Linear(hs2, 2)
+        )
+
+    def forward(self, input):
+        """
+        Performs a forward pass through the network.
+
+        Args:
+            input: The input tensor.
+
+        Returns:
+            The output tensor after passing through the network.
+        """
+        out = self.layers(input)
+        return out
 
 # Function to collate batch for inference
 def FPLSTM_collate(batch):
@@ -288,21 +368,4 @@ def FPLSTM_collate(batch):
     xx, yy = zip(*batch)
     x_batch = torch.stack(xx).permute(1, 0, 2)
     y_batch = torch.stack(yy)
-    return (x_batch, y_batch)
-
-# Function to collate batch for inference
-def TCN_collate(batch):
-    """
-    Collates a batch of data for TCN model.
-
-    Args:
-        batch (list): A list of tuples containing input and target tensors.
-
-    Returns:
-        tuple: A tuple containing the collated input tensor and target tensor.
-    """
-    xx, yy = zip(*batch)
-    x_batch = torch.stack(xx).permute(0, 2, 1)  # Change to (batch_size, num_features, sequence_length)
-    y_batch = torch.tensor(yy)  # Convert targets to tensor directly
-    # TCN typically expects (batch_size, num_features, sequence_length)
     return (x_batch, y_batch)

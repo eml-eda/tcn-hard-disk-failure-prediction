@@ -26,6 +26,10 @@ parser.add_argument('--split_technique', default='random')
 parser.add_argument('--interpolate_technique', default='linear')
 parser.add_argument('--search_technique', default='randomized')
 parser.add_argument('--fill_na_method', default='None')
+parser.add_argument('--pca_components', default=8)
+parser.add_argument('--smoothing_level', default=0.3)
+parser.add_argument('--transfer_learning', default=False)
+parser.add_argument('--train_on_all_models', default=False)
 # Add more arguments as needed
 args = parser.parse_args()
 
@@ -45,7 +49,7 @@ main_iface = gr.Interface(
         gr.Dropdown(choices=['None', 'Yes'], value='None', label='Oversample Undersample', info='Select oversample/undersample technique.'),
         gr.Textbox(value='auto', label='Balancing Normal Failed', info='Balancing factor for normal and failed states, input auto for automatic.'),
         gr.Slider(minimum=1, maximum=100, step=1, value=32, label='History Signal', info='Length of the history signal.'),
-        gr.Dropdown(choices=['TCN', 'LSTM', 'NNet', 'DenseNet', 'MLP', 'RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'MLP_Torch', 'XGB', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes', 'DBSCAN'], value='TCN', label='Classifier', info='Select the classifier algorithm.'),
+        gr.Dropdown(choices=['TCN', 'LSTM', 'NNet', 'DenseNet', 'MLP', 'RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'MLP_Torch', 'XGB', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes', 'DBSCAN', 'RGF'], value='TCN', label='Classifier', info='Select the classifier algorithm.'),
         gr.Dropdown(choices=['custom', 'PCA', 'None'], value='None', label='Features Extraction Method', info='Select the features extraction method.'),
         gr.Dropdown(choices=['0', '1', 'None'], value='0', label='CUDA DEV', info='Select CUDA device, None for CPU.'),
         gr.Dropdown(choices=['Ok', 'None'], value='Ok', label='Ranking', info='Select ranking method.'),
@@ -56,7 +60,9 @@ main_iface = gr.Interface(
         gr.Dropdown(choices=['randomized', 'grid', 'None'], value='randomized', label='Search Technique', info='Select the search technique.'),
         gr.Dropdown(choices=['ffill', 'None'], value='None', label='Fill NA Method', info='Select the method to fill NA values.'),
         gr.Slider(minimum=1, maximum=8, step=1, value=8, label='PCA Components', info='Select the number of PCA components to generate.'),
+        gr.Slider(minimum=0, maximum=1, step=0.1, value=0.3, label='Smoothing Level', info='Select the smoothing level.'),
         gr.Checkbox(value=False, label='Enable Transfer Learning', info='Check to enable transfer learning.'),
+        gr.Checkbox(value=False, label='Train on All Models', info='Check to train on all models.'),
     ],
     outputs=[
         gr.File(label='Download Log File', type='filepath'),

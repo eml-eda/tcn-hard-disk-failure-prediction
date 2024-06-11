@@ -7,7 +7,52 @@ import os
 from Networks_inference import *
 import json
 from Dataset_processing import DatasetProcessing
+import logger
+from tqdm import tqdm
 
+
+# Define default global values
+INFERENCE_PARAMS = {
+    'dropout': 0.1,  # LSTM
+    'lstm_hidden_s': 64,  # LSTM
+    'fc1_hidden_s': 16,  # LSTM
+    'hidden_dim': 128,  # MLP_Torch
+    'hidden_size': 8,  # DenseNet
+    'num_layers': 1,  # NNet
+}
+
+def feature_extraction_PCA(X, pca_components):
+    """
+    Perform feature extraction using Principal Component Analysis (PCA) on the input data.
+
+    Parameters:
+    - X: numpy array of shape (samples, features, dim_window)
+        The input data to perform feature extraction on.
+    - pca_components (int): The number of components to keep.
+
+    Returns:
+    - X_pca: numpy array of shape (samples, features, n_components)
+        The transformed data after applying PCA.
+
+    """
+    samples, features, dim_window = X.shape
+    logger.info(f'Extracting: samples: {samples}, features: {features}, dim_window: {dim_window}')
+    
+    # Ensure n_components is not more than the minimum of dim_window and pca_components
+    n_components = min(pca_components, dim_window)
+    X_pca = np.zeros((samples, features, n_components))
+
+    for i in tqdm(range(samples), desc='Processing samples'):
+        for j in range(features):
+            current_data = X[i, j, :].reshape(-1, dim_window)
+            current_n_samples, current_n_features = current_data.shape
+            
+            # Adjust n_components to be within the valid range
+            valid_n_components = min(n_components, current_n_samples, current_n_features)
+            pca = PCA(n_components=valid_n_components)
+            X_pca[i, j, :valid_n_components] = pca.fit_transform(current_data)[:, :valid_n_components]
+
+    return X_pca
 
 def feature_extraction(X):
     """
@@ -79,15 +124,15 @@ def read_params_from_json(classifier, id_number):
 
     # Check if the file exists
     if not os.path.exists(file_path):
-        print(f"File {file_path} does not exist.")
+        logger.info(f"File {file_path} does not exist.")
         return None
 
     # Read the params dictionary from a JSON file
     with open(file_path, 'r') as f:
         params = json.load(f)
 
-    print(f'Parameters read from: {file_path}')
-    print('User parameters:', params)
+    logger.info(f'Parameters read from: {file_path}')
+    logger.info('User parameters:', params)
 
     return params
 
@@ -106,6 +151,14 @@ def load_model(model, model_path):
     model.eval()
     return model
 
+def set_inference_params(*args):
+    param_names = ['dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'hidden_size', 'num_layers']
+    # Use the global keyword when modifying global variables
+    global INFERENCE_PARAMS
+    INFERENCE_PARAMS = dict(zip(param_names, args))
+    # Print out updated parameters to Gradio interface
+    return f"Parameters successfully updated:\n" + "\n".join([f"{key}: {value}" for key, value in INFERENCE_PARAMS.items()])
+
 def infer(model, X, classifier):
     """
     Use the trained model to make predictions on new data.
@@ -120,8 +173,8 @@ def infer(model, X, classifier):
     """
     if classifier == 'LSTM':
         inference_loader = DataLoader(FPLSTMDataset(X), batch_size=1, shuffle=False, collate_fn=FPLSTM_collate)
-    elif classifier in ['TCN', 'MLP_Torch']:
-        inference_loader = DataLoader(TCNDataset(X), batch_size=1, shuffle=False, collate_fn=TCN_collate)
+    elif classifier in ['TCN', 'MLP_Torch', 'NNet', 'DenseNet']:
+        inference_loader = DataLoader(TCNDataset(X), batch_size=1, shuffle=False)
     model.eval()
     predictions = []
 
@@ -138,16 +191,16 @@ def infer(model, X, classifier):
 def initialize_inference(*args):
     # Define parameter names and create a dictionary of params
     param_names = [
-        'id_number', 'classifier', 'cuda_dev', 'csv_file'
+        'id_number', 'classifier', 'cuda_dev', 'pca_components', 'smoothing_level', 'csv_file'
     ]
 
     # Assign values directly from the dictionary
     (
-        id_number, classifier, CUDA_DEV, csv_file
+        id_number, classifier, CUDA_DEV, pca_components, smoothing_level, csv_file
     ) = dict(zip(param_names, args)).values()
 
     params = read_params_from_json(classifier, id_number)
-    
+
     # Unpack the params dictionary into individual variables
     serial_number = params['serial_number']
     overlap = params['overlap']
@@ -157,43 +210,18 @@ def initialize_inference(*args):
     interpolate_technique = params['interpolate_technique']
     smart_attributes = params['smart_attributes']
     days_considered_as_failure = params['days_considered_as_failure']
+    smoothing_level = params['smoothing_level']
 
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
-    # Path to the saved model
-    if classifier == 'LSTM':
-        # Get a list of all files in model_dir that start with 'lstm_training_'
-        files = glob.glob(os.path.join(model_dir, f'lstm_{id_number}_*.pth'))
-    elif classifier == 'TCN':
-        # Get a list of all files in model_dir that start with 'tcn_training_'
-        files = glob.glob(os.path.join(model_dir, f'tcn_{id_number}_*.pth'))
-    elif classifier == 'MLP_Torch':
-        # Get a list of all files in model_dir that start with 'mlp_training_'
-        files = glob.glob(os.path.join(model_dir, f'mlp_manual_{id_number}_*.pth'))
-
-    # Check if any files were found
-    if not files:
-        raise ValueError("No files found for the specified classifier.")
-
-    # Sort the files by modification time and get the most recent one
-    latest_file = max(files, key=os.path.getmtime)
-
-    # Define the model
-    model = FPLSTM().cuda()
-
-    # Now you can load the model from the latest file
-    model.load_state_dict(torch.load(latest_file))
-
-    # Load the model
-    model = load_model(model, latest_file)
 
     # Read the CSV file
     df = pd.read_csv(csv_file.name)
 
     # Filter the DataFrame, then select the feature columns based on the smart attributes
     df = feature_selection(df.loc[(serial_number, slice(None))], smart_attributes)
-    print('Used features')
+    logger.info('Used features')
     for column in list(df):
-        print('{:.<27}'.format(column,))
+        logger.info('{:.<27}'.format(column,))
 
     # Load or prepare your input data for inference
     X_inference = DatasetProcessing(
@@ -202,20 +230,74 @@ def initialize_inference(*args):
         windowing=windowing,
         window_dim=history_signal,
         days=days_considered_as_failure,
+        smoothing_level=smoothing_level,
     )
 
     # Step x.1: Feature Extraction
-    if features_extraction_method == True: 
+    if features_extraction_method == 'custom': 
         # Extract features for the train and test set
-        Xtrain = feature_extraction(Xtrain)
-        Xtest = feature_extraction(Xtest)
+        X_inference = feature_extraction(X_inference)
+    elif features_extraction_method == 'PCA':
+        X_inference = feature_extraction_PCA(X_inference, pca_components)
+    elif features_extraction_method == 'None':
+        logger.info('Skipping features extraction for training data.')
+    else:
+        raise ValueError("Invalid features extraction method.")
+
+    # Path to the saved model
+    if classifier in ['LSTM', 'TCN', 'MLP_Torch', 'NNet', 'DenseNet']:
+        # Get a list of all files in model_dir that start with 'lstm_training_'
+        files = glob.glob(os.path.join(model_dir, f'{classifier.lower()}_{id_number}_*.pth'))
+
+    # Check if any files were found
+    if not files:
+        raise ValueError("No files found for the specified classifier.")
+
+    # Sort the files by modification time and get the most recent one
+    latest_file = max(files, key=os.path.getmtime)
+
+    if classifier == 'LSTM':
+        num_inputs = X_inference.shape[1]
+        lstm_hidden_s = INFERENCE_PARAMS['lstm_hidden_s']
+        fc1_hidden_s = INFERENCE_PARAMS['fc1_hidden_s']
+        dropout = INFERENCE_PARAMS['dropout']
+        model = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
+    elif classifier == 'TCN':
+        data_dim = X_inference.shape[2]
+        num_inputs = X_inference.shape[1]
+        model = TCN_Network(data_dim, num_inputs)
+    elif classifier == 'MLP_Torch':
+        input_dim = X_inference.shape[1] * X_inference.shape[2]
+        hidden_dim = INFERENCE_PARAMS['hidden_dim']
+        model = MLP(input_dim, hidden_dim)
+    elif classifier == 'NNet':
+        data_dim = X_inference.shape[2]
+        hidden_dim = INFERENCE_PARAMS['hidden_dim']
+        num_layers = INFERENCE_PARAMS['num_layers']
+        dropout = INFERENCE_PARAMS['dropout']
+        model = NNet(data_dim, hidden_dim, num_layers, dropout)
+    elif classifier == 'DenseNet':
+        num_inputs = X_inference.shape[1]
+        hidden_size = INFERENCE_PARAMS['hidden_size']
+        model = DenseNet(num_inputs, hidden_size)
+
+    # TODO:
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    logger.info(f'Moving model to {device}')
+    model.to(device)
+
+    # Now you can load the model from the latest file
+    model.load_state_dict(torch.load(latest_file))
+
+    # Load the model
+    model = load_model(model, latest_file)
 
     if classifier in ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes']:
         pass
-    elif classifier in ['TCN', 'MLP_Torch', 'LSTM']:
+    elif classifier in ['TCN', 'MLP_Torch', 'LSTM', 'NNet', 'DenseNet']:
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
         # Make predictions
         predictions = infer(model, X_inference, classifier)
 
     # Print or use the predictions as needed
-    print("Predictions:", predictions)
+    logger.info("Predictions:", predictions)

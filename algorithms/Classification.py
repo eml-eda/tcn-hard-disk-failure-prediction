@@ -22,6 +22,7 @@ from datetime import datetime
 from joblib import dump
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, cross_val_score, StratifiedKFold
 from sklearn.naive_bayes import GaussianNB
+from rgf.sklearn import RGFClassifier
 import json
 import logger
 
@@ -119,16 +120,13 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     X_train, Y_train = shuffle(X_train, Y_train)
 
     # Define supervised classifiers
-    supervised_classifiers = ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes']
+    supervised_classifiers = ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes', 'RGF']
 
     # Define scoring metrics based on the type of classifier
     if classifier_name in supervised_classifiers:
         scoring = {'accuracy': make_scorer(accuracy_score), 'f1': make_scorer(f1_score)}
     else:
         scoring = {'silhouette': make_scorer(silhouette_score)}
-
-    # Choose the search method
-    search_method = 'randomized'  # 'grid' for GridSearchCV, 'randomized' for RandomizedSearchCV
 
     if search_method == 'grid':
         # Initialize GridSearchCV
@@ -143,10 +141,8 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     search.fit(X_train, Y_train)
 
     if classifier_name in supervised_classifiers:
-        # Define StratifiedKFold cross-validator
-        stratified_kfold = StratifiedKFold(n_splits=5)
-        # Calculate cross validation score
-        cv_scores = cross_val_score(search.best_estimator_, X_train, Y_train, cv=stratified_kfold)
+        # Calculate cross validation score, more splits reduce bias but increase variance
+        cv_scores = cross_val_score(search.best_estimator_, X_train, Y_train, cv=StratifiedKFold(n_splits=5))
 
         logger.info(f"Cross validation scores: {cv_scores}")
         logger.info(f"Mean cross validation score: {cv_scores.mean()}")
@@ -442,6 +438,28 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             model.set_params(**best_params)
 
         return train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+    elif classifier == 'RGF':
+        # Step 1.7.7: Perform Classification using Regularized Greedy Forest (RGF).
+        try:
+            best_params = load_best_params_from_json(classifier, args['id_number'])
+        except FileNotFoundError:
+            best_params = None
+
+        model = RGFClassifier()
+
+        # Define the parameter grid
+        # You can define some hyperparameters here. For example:
+        param_grid = {
+            'max_leaf': [1000, 1200, 1500],
+            'algorithm': ["RGF", "RGF_Opt", "RGF_Sib"],
+            'test_interval': [100, 600, 900]
+        }
+
+        # If the best parameters exist, use them
+        if best_params:
+            model.set_params(**best_params)
+
+        return train_and_evaluate_model(model, param_grid, 'RGF', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         # Initialize the TCNTrainer with the appropriate parameters
@@ -602,7 +620,7 @@ def save_params_to_json(df, *args):
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method', 'fillna_method', 'pca_components'
+        'search_method', 'fillna_method', 'pca_components', 'smoothing_level'
     ]
 
     # Assign values directly from the dictionary
@@ -700,7 +718,7 @@ def initialize_classification(*args):
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method', 'fillna_method', 'pca_components', 'transfer_learning'
+        'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'transfer_learning', 'all_models'
     ]
 
     # Assign values directly from the dictionary
@@ -709,7 +727,7 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method, pca_components, transfer_learning
+        search_method, fillna_method, pca_components, smoothing_level, transfer_learning, all_models
     ) = dict(zip(param_names, args)).values()
     models = [m.strip() for m in model.split(',')]
     model_string = "_".join(models)
@@ -786,16 +804,15 @@ def initialize_classification(*args):
         logger.info(f'Saving to pickle file: {model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
         df.to_pickle(os.path.join(output_dir, f'{model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
 
-    if manufacturer != 'custom':
-        relevant_models, irrelevant_models = find_relevant_models(df)
-
     # Interpolate data for the rows with missing dates
     if interpolate_technique != 'None':
         df = interpolate_ts(df, method=interpolate_technique)
 
-    # TODO: (Unfinished) Filter the original DataFrame based on the 'model' column
-    relevant_df = df[df['model'].isin(relevant_models)]
-    irrelevant_df = df[df['model'].isin(irrelevant_models)]
+    if manufacturer != 'custom' and all_models == False:
+        relevant_models, irrelevant_models = find_relevant_models(df)
+        # Filter the original DataFrame based on the 'model' column
+        relevant_df = df[df['model'].isin(relevant_models)]
+        irrelevant_df = df[df['model'].isin(irrelevant_models)]
 
     # Saving parameters to json file
     logger.info('Saving parameters to json file...')
@@ -804,9 +821,78 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method, pca_components
+        search_method, fillna_method, pca_components, smoothing_level
     )
 
+    if transfer_learning and all_models == False:
+        # Partition the dataset into training and testing sets for the relevant_df
+        Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+            output_dir, relevant_df, model_string, windowing, test_train_perc, 
+            oversample_undersample, balancing_normal_failed, history_signal, 
+            classifier, features_extraction_method, ranking, num_features, 
+            overlap, split_technique, fillna_method, pca_components, smoothing_level
+        )
+
+        # Perform classification for the relevant_df
+        perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
+            classifier, CUDA_DEV, search_method, False, param_path
+        )
+
+        # Partition the dataset into training and testing sets for the irrelevant_df
+        Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+            output_dir, irrelevant_df, model_string, windowing, test_train_perc, 
+            oversample_undersample, balancing_normal_failed, history_signal, 
+            classifier, features_extraction_method, ranking, num_features, 
+            overlap, split_technique, fillna_method, pca_components, smoothing_level
+        )
+
+        # Perform classification for the irrelevant_df
+        return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
+            classifier, CUDA_DEV, search_method, True, param_path
+        )
+    else:
+        if all_models == False:
+            # Partition the dataset into training and testing sets for entire df
+            Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+                output_dir, df, model_string, windowing, test_train_perc, 
+                oversample_undersample, balancing_normal_failed, history_signal, 
+                classifier, features_extraction_method, ranking, num_features, 
+                overlap, split_technique, fillna_method, pca_components, smoothing_level
+            )
+
+        else:
+            # Partition the dataset into training and testing sets for relevant_df
+            Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+                output_dir, relevant_df, model_string, windowing, test_train_perc, 
+                oversample_undersample, balancing_normal_failed, history_signal, 
+                classifier, features_extraction_method, ranking, num_features, 
+                overlap, split_technique, fillna_method, pca_components, smoothing_level
+            )
+
+        # Perform classification for the relevant_df
+        return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
+            classifier, CUDA_DEV, search_method, False, param_path
+        )
+
+
+def initialize_partitioner(df, *args):
+    # Define parameter names and create a dictionary of params
+    param_names = [
+        'output_dir', 'model_string', 'windowing',
+        'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
+        'history_signal', 'classifier', 'features_extraction_method',
+        'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
+        'search_method', 'fillna_method', 'pca_components', 'smoothing_level'
+    ]
+
+    # Assign values directly from the dictionary
+    (
+        output_dir, model_string, windowing, 
+        test_train_perc, oversample_undersample, balancing_normal_failed,
+        history_signal, classifier, features_extraction_method,
+        ranking, num_features, overlap, split_technique,
+        fillna_method, pca_components, smoothing_level
+    ) = dict(zip(param_names, args)).values()
     ## -------- ##
     # random: stratified without keeping time order
     # hdd --> separate different hdd (need FIXes)
@@ -824,9 +910,10 @@ def initialize_classification(*args):
         window_dim=history_signal,
         resampler_balancing=balancing_normal_failed,
         oversample_undersample=oversample_undersample,
-        fillna_method=fillna_method
+        fillna_method=fillna_method,
+        smoothing_level=smoothing_level
     )
-    
+
     # Print the line of Xtrain and Xtest
     logger.info(f'Xtrain shape: {Xtrain.shape}, Xtest shape: {Xtest.shape}')
 
@@ -864,17 +951,14 @@ def initialize_classification(*args):
         'ExtraTrees', 
         'GradientBoosting', 
         'NaiveBayes', 
-        'DBSCAN'
+        'DBSCAN',
+        'RGF'
     ]
     if classifier in classifiers and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
 
-    # TODO:
-    return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, classifier, CUDA_DEV, search_method, transfer_learning, param_path)
-
 def perform_classification(*args):
-    # TODO: The following code should be separated into a different function
     # Define parameter names and create a dictionary of params
     param_names = [
         'Xtrain', 'ytrain', 'Xtest', 'ytest',
@@ -1094,9 +1178,9 @@ def perform_classification(*args):
         optimizer_type = TRAINING_PARAMS['optimizer_type']
         reg = TRAINING_PARAMS['reg']
         num_workers = TRAINING_PARAMS['num_workers']
-        num_inputs = Xtrain.shape[2]  # Number of features in the input (32)
-        logger.info(f'number of inputs: {num_inputs}, hidden_dim: {hidden_dim}')
-        net = NNet(input_size=num_inputs, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
+        data_dim = Xtrain.shape[2]  # Number of features in the input (32)
+        logger.info(f'data dimension: {data_dim}, hidden_dim: {hidden_dim}')
+        net = NNet(input_size=data_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
         # TODO: Add transfer learning
         if transfer_learning:
             # Load the pre-trained model

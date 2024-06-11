@@ -23,6 +23,7 @@ from imblearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
 from sklearn.metrics import pairwise_distances
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 
 def plot_feature(dataset):
@@ -406,7 +407,7 @@ def interpolate_ts(df, method='linear'):
         inner_df['serial_number'] = serial_num
         inner_df = inner_df.reset_index()
 
-        print(f'Added {len(inner_df)} items for serial number: {serial_num}\r', end='\r')
+        #print(f'Added {len(inner_df)} items for serial number: {serial_num}\r', end='\r')
         interp_dfs.append(inner_df)
 
     interp_df = pd.concat(interp_dfs, axis=0)
@@ -565,7 +566,7 @@ class DatasetPartitioner:
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
     def __init__(self, df, model, overlap=0, rank='None', num_features=10, test_type='t-test', technique='random',
-                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample='None', fillna_method='None'):
+                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample='None', fillna_method='None', smoothing_level=0.5):
         """
         Initialize the DatasetPartitioner object.
         
@@ -583,6 +584,7 @@ class DatasetPartitioner:
         - resampler_balancing (float): The resampler balancing factor (default: auto).
         - oversample_undersample (str): The oversample/undersample value (default: None).
         - fillna_method (str): Method to fill the NA values (default: 'None').
+        - smoothing_level (float): The smoothing level (default: 0.5).
 
         """
         self.df = df
@@ -598,6 +600,7 @@ class DatasetPartitioner:
         self.resampler_balancing = resampler_balancing
         self.oversample_undersample = oversample_undersample
         self.fillna_method = fillna_method
+        self.smoothing_level = smoothing_level
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.Xtrain, self.Xtest, self.ytrain, self.ytest = self.partition()
 
@@ -626,10 +629,16 @@ class DatasetPartitioner:
         self.df = pd.DataFrame(mms.fit_transform(self.df), columns=self.df.columns, index=self.df.index)
         # self.df is now normalized, but temporal is original string data, to avoid normalization of 'serial_number' and 'date' and other non float64 columns
         self.df = pd.concat([self.df, temporal], axis=1)
-
+        # Perform the windowing action for time series data
         windowed_df = self.handle_windowing()
-
-        logger.info('Creating training and test dataset')
+        # Preprocess the dataset for splitting, remove the redundant columns
+        windowed_df = self.preprocess_dataset(windowed_df)
+        # Add exponential smoothing method
+        logger.info('Performing exponential smoothing...')
+        for col in tqdm(windowed_df.columns, desc="Processing columns", leave=False, unit="column", ncols=100):
+            if col.startswith('smart'):
+                windowed_df[col] = ExponentialSmoothing(windowed_df[col], trend=None, seasonal=None, seasonal_periods=None).fit(smoothing_level=self.smoothing_level).fittedvalues
+        logger.info('Creating training and test dataset...')
         return self.split_dataset(windowed_df)
     
     def factors(self, n):
@@ -826,7 +835,6 @@ class DatasetPartitioner:
         - ytrain (Series): The training labels.
         - ytest (Series): The test labels.
         """
-        df = self.preprocess_dataset(df)
         if self.technique == 'random':
             y = df['predict_val']   # y represents the prediction value (Series)
             df.drop(columns=['serial_number', 'date', 'failure', 'predict_val', 'validate_val'], inplace=True)
@@ -1227,10 +1235,10 @@ def feature_selection(df, num_features, test_type):
         if 'raw' in feature:
             logger.info(f'Feature: {feature}')
 
-            # if feature.replace('raw', 'normalized') in df.columns:
-            #     # (Not used) Pearson correlation to measure the linear relationship between two variables
-            #     correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
-            #     logger.info(f'Pearson correlation: {correlation:.3f}')
+            if feature.replace('raw', 'normalized') in df.columns:
+                # (Not used) Pearson correlation to measure the linear relationship between two variables
+                correlation, _ = scipy.stats.pearsonr(df[feature], df[feature.replace('raw', 'normalized')])
+                logger.info(f'Pearson correlation: {correlation:.3f}')
 
             # Select the statistical test based on test_type
             if test_type == 't-test':
