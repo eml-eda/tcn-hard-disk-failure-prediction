@@ -718,7 +718,7 @@ def initialize_classification(*args):
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'transfer_learning', 'all_models',
+        'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'incremental_learning', 'transfer_learning', 'partition_models',
         'enable_ga_algorithm', 'number_pop', 'number_gen'
     ]
 
@@ -728,7 +728,7 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method, pca_components, smoothing_level, transfer_learning, all_models,
+        search_method, fillna_method, pca_components, smoothing_level, incremental_learning, transfer_learning, partition_models,
         enable_ga_algorithm, number_pop, number_gen
     ) = dict(zip(param_names, args)).values()
     models = [m.strip() for m in model.split(',')]
@@ -813,7 +813,7 @@ def initialize_classification(*args):
     if interpolate_technique != 'None':
         df = interpolate_ts(df, method=interpolate_technique)
 
-    if manufacturer != 'custom' and all_models == False:
+    if manufacturer != 'custom' and partition_models == True:
         relevant_models, irrelevant_models = find_relevant_models(df)
         # Filter the original DataFrame based on the 'model' column
         relevant_df = df[df['model'].isin(relevant_models)]
@@ -829,34 +829,48 @@ def initialize_classification(*args):
         search_method, fillna_method, pca_components, smoothing_level
     )
 
-    if transfer_learning and all_models == False:
-        # Partition the dataset into training and testing sets for the relevant_df
-        Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
-            relevant_df, output_dir, model_string, windowing, test_train_perc, 
-            oversample_undersample, balancing_normal_failed, history_signal, 
-            classifier, features_extraction_method, ranking, num_features, 
-            overlap, split_technique, fillna_method, pca_components, smoothing_level
-        )
+    if transfer_learning:
+        if partition_models == True:
+            # Partition the dataset into training and testing sets for the relevant_df
+            Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+                relevant_df, output_dir, model_string, windowing, test_train_perc, 
+                oversample_undersample, balancing_normal_failed, history_signal, 
+                classifier, features_extraction_method, ranking, num_features, 
+                overlap, split_technique, fillna_method, pca_components, smoothing_level
+            )
 
-        # Perform classification for the relevant_df
-        perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-            classifier, CUDA_DEV, search_method, False, param_path
-        )
+            # Perform classification for the relevant_df
+            perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
+                classifier, CUDA_DEV, search_method, incremental_learning, False, param_path
+            )
 
-        # Partition the dataset into training and testing sets for the irrelevant_df
-        Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
-            irrelevant_df, output_dir, model_string, windowing, test_train_perc, 
-            oversample_undersample, balancing_normal_failed, history_signal, 
-            classifier, features_extraction_method, ranking, num_features, 
-            overlap, split_technique, fillna_method, pca_components, smoothing_level
-        )
+            # Partition the dataset into training and testing sets for the irrelevant_df
+            Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+                irrelevant_df, output_dir, model_string, windowing, test_train_perc, 
+                oversample_undersample, balancing_normal_failed, history_signal, 
+                classifier, features_extraction_method, ranking, num_features, 
+                overlap, split_technique, fillna_method, pca_components, smoothing_level
+            )
 
-        # Perform classification for the irrelevant_df
-        return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-            classifier, CUDA_DEV, search_method, True, param_path
-        )
+            # Perform classification for the irrelevant_df
+            return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
+                classifier, CUDA_DEV, search_method, incremental_learning, True, param_path
+            )
+        else:
+            # Partition the dataset into training and testing sets for the irrelevant_df
+            Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
+                df, output_dir, model_string, windowing, test_train_perc, 
+                oversample_undersample, balancing_normal_failed, history_signal, 
+                classifier, features_extraction_method, ranking, num_features, 
+                overlap, split_technique, fillna_method, pca_components, smoothing_level
+            )
+
+            # Perform classification for the irrelevant_df
+            return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
+                classifier, CUDA_DEV, search_method, incremental_learning, True, param_path
+            )
     else:
-        if all_models == False:
+        if partition_models == False:
             # Partition the dataset into training and testing sets for entire df
             Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
                 df, output_dir, model_string, windowing, test_train_perc, 
@@ -876,7 +890,7 @@ def initialize_classification(*args):
 
         # Perform classification for the relevant_df
         return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-            classifier, CUDA_DEV, search_method, False, param_path
+            classifier, CUDA_DEV, search_method, incremental_learning, False, param_path
         )
 
 def initialize_partitioner(df, *args):
@@ -967,14 +981,14 @@ def perform_classification(*args):
     param_names = [
         'Xtrain', 'ytrain', 'Xtest', 'ytest',
         'id_number', 'classifier', 'cuda_dev',
-        'search_method', 'transfer_learning', 'param_path'
+        'search_method', 'incremental_learning', 'transfer_learning', 'param_path'
     ]
 
     # Assign values directly from the dictionary
     (
         Xtrain, ytrain, Xtest, ytest,
         id_number, classifier, CUDA_DEV,
-        search_method, transfer_learning, param_path
+        search_method, incremental_learning, transfer_learning, param_path
     ) = dict(zip(param_names, args)).values()
 
     # Step 1.6: Classifier Selection: set training parameters
@@ -995,15 +1009,15 @@ def perform_classification(*args):
         num_inputs = Xtrain.shape[1]
         logger.info(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
         net = TCN_Network(data_dim, num_inputs)
-        # TODO: Add transfer learning
-        if transfer_learning:
+        if incremental_learning:
             net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            # Freeze specific layers (b0, b1, b2)
-            for name, param in net.named_parameters():
-                if 'b0_' in name or 'b1_' in name or 'b2_' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
+            if transfer_learning:
+                # Freeze specific layers (b0, b1, b2)
+                for name, param in net.named_parameters():
+                    if 'b0_' in name or 'b1_' in name or 'b2_' in name:
+                        param.requires_grad = False
+                    else:
+                        param.requires_grad = True
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             logger.info(f'Moving model to {device}')
             net.to(device)
@@ -1058,15 +1072,15 @@ def perform_classification(*args):
         num_workers = TRAINING_PARAMS['num_workers']
         num_inputs = Xtrain.shape[1]
         net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
-        # TODO: Add transfer learning
-        if transfer_learning:
+        if incremental_learning:
             net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            # Freeze specific layers (lstm and dropout)
-            for name, param in net.named_parameters():
-                if 'lstm' in name or 'do1' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
+            if transfer_learning:
+                # Freeze specific layers (lstm and dropout)
+                for name, param in net.named_parameters():
+                    if 'lstm' in name or 'do1' in name:
+                        param.requires_grad = False
+                    else:
+                        param.requires_grad = True
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             logger.info(f'Moving model to {device}')
             net.to(device)
@@ -1121,17 +1135,16 @@ def perform_classification(*args):
         num_workers = TRAINING_PARAMS['num_workers']
         logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
         net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
-        # TODO: Add transfer learning
-        if transfer_learning:
+        if incremental_learning:
             # Load the pre-trained model
             net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-
-            # Freeze the initial layers (lin1 and lin2), fine-tune the rest
-            for name, param in net.named_parameters():
-                if 'lin1' in name or 'lin2' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
+            if transfer_learning:
+                # Freeze the initial layers (lin1 and lin2), fine-tune the rest
+                for name, param in net.named_parameters():
+                    if 'lin1' in name or 'lin2' in name:
+                        param.requires_grad = False
+                    else:
+                        param.requires_grad = True
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             logger.info(f'Moving model to {device}')
             net.to(device)
@@ -1185,17 +1198,16 @@ def perform_classification(*args):
         data_dim = Xtrain.shape[2]  # Number of features in the input (32)
         logger.info(f'data dimension: {data_dim}, hidden_dim: {hidden_dim}')
         net = NNet(input_size=data_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
-        # TODO: Add transfer learning
-        if transfer_learning:
+        if incremental_learning:
             # Load the pre-trained model
             net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-
-            # Freeze the LSTM layers (rnn), fine-tune the rest
-            for name, param in net.named_parameters():
-                if 'rnn' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
+            if transfer_learning:
+                # Freeze the LSTM layers (rnn), fine-tune the rest
+                for name, param in net.named_parameters():
+                    if 'rnn' in name:
+                        param.requires_grad = False
+                    else:
+                        param.requires_grad = True
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             logger.info(f'Moving model to {device}')
             net.to(device)
@@ -1249,17 +1261,16 @@ def perform_classification(*args):
         num_inputs = Xtrain.shape[1]
         logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
         net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
-        # TODO: Add transfer learning
-        if transfer_learning:
+        if incremental_learning:
             # Load the pre-trained model
             net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-
-            # Freeze the initial linear layers (layers.0 and layers.2), fine-tune the rest
-            for name, param in net.named_parameters():
-                if 'layers.0' in name or 'layers.2' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
+            if transfer_learning:
+                # Freeze the initial linear layers (layers.0 and layers.2), fine-tune the rest
+                for name, param in net.named_parameters():
+                    if 'layers.0' in name or 'layers.2' in name:
+                        param.requires_grad = False
+                    else:
+                        param.requires_grad = True
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             logger.info(f'Moving model to {device}')
             net.to(device)
