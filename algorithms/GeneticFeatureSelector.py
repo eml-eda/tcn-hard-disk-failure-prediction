@@ -5,6 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import LabelEncoder
 from deap import creator, base, tools, algorithms
+from tqdm import tqdm
 
 
 class GeneticFeatureSelector:
@@ -138,8 +139,8 @@ class GeneticFeatureSelector:
         """
         max_accuracy = 0.0
         best_individual = None
-        for individual in self.hof:
-            if individual.fitness.values > max_accuracy:  # FIXME: TypeError: '>' not supported between instances of 'tuple' and 'float'
+        for individual in tqdm(self.hof, desc="Processing individuals"):
+            if individual.fitness.values[0] > max_accuracy:
                 max_accuracy = individual.fitness.values
                 best_individual = individual
 
