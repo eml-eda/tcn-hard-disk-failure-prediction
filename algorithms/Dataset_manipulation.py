@@ -635,9 +635,11 @@ class DatasetPartitioner:
         windowed_df = self.preprocess_dataset(windowed_df)
         # Add exponential smoothing method
         logger.info('Performing exponential smoothing...')
-        for col in tqdm(windowed_df.columns, desc="Processing columns", leave=False, unit="column", ncols=100):
-            if col.startswith('smart'):
-                windowed_df[col] = ExponentialSmoothing(windowed_df[col], trend=None, seasonal=None, seasonal_periods=None).fit(smoothing_level=self.smoothing_level).fittedvalues
+        for serial_num, group in tqdm(windowed_df.groupby('serial_number'), desc="Processing groups", leave=False, unit="group", ncols=100):
+            for col in group.columns:
+                if col.startswith('smart'):
+                    group[col] = ExponentialSmoothing(group[col], trend=None, seasonal=None, seasonal_periods=None).fit(smoothing_level=self.smoothing_level).fittedvalues
+            windowed_df.loc[group.index] = group
         logger.info('Creating training and test dataset...')
         return self.split_dataset(windowed_df)
     
