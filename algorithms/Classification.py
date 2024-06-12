@@ -640,7 +640,7 @@ def save_params_to_json(df, *args):
     if not os.path.exists(param_dir):
         os.makedirs(param_dir)
 
-    logger.info(f'User parameters: {params}')
+    logger.info(f'Saving parameters: {params}')
 
     # Define the file path
     file_path = os.path.join(param_dir, f"{params['classifier'].lower()}_{params['id_number']}_params_{now_str}.json")
@@ -718,7 +718,8 @@ def initialize_classification(*args):
         'test_train_percentage', 'oversample_undersample', 'balancing_normal_failed',
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
-        'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'transfer_learning', 'all_models'
+        'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'transfer_learning', 'all_models',
+        'enable_ga_algorithm', 'number_pop', 'number_gen'
     ]
 
     # Assign values directly from the dictionary
@@ -727,7 +728,8 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method, pca_components, smoothing_level, transfer_learning, all_models
+        search_method, fillna_method, pca_components, smoothing_level, transfer_learning, all_models,
+        enable_ga_algorithm, number_pop, number_gen
     ) = dict(zip(param_names, args)).values()
     models = [m.strip() for m in model.split(',')]
     model_string = "_".join(models)
@@ -796,8 +798,11 @@ def initialize_classification(*args):
         df['validate_val'] = valid_list
 
         if ranking != 'None':
+            enable_ga_algorithm = True
             # Step 1.4: Feature Selection: Subflow chart of Main Classification Process
-            df = feature_selection(df, num_features, test_type)
+            # n_pop: Number of individuals in each generation
+            # n_gen: Stop the genetic algorithm after certain generations
+            df = feature_selection(df, num_features, test_type, enable_ga_algorithm, n_pop=number_pop, n_gen=number_gen)
         logger.info('Used features')
         for column in list(df):
             logger.info(f'{column:<27}.')
@@ -827,7 +832,7 @@ def initialize_classification(*args):
     if transfer_learning and all_models == False:
         # Partition the dataset into training and testing sets for the relevant_df
         Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
-            output_dir, relevant_df, model_string, windowing, test_train_perc, 
+            relevant_df, output_dir, model_string, windowing, test_train_perc, 
             oversample_undersample, balancing_normal_failed, history_signal, 
             classifier, features_extraction_method, ranking, num_features, 
             overlap, split_technique, fillna_method, pca_components, smoothing_level
@@ -840,7 +845,7 @@ def initialize_classification(*args):
 
         # Partition the dataset into training and testing sets for the irrelevant_df
         Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
-            output_dir, irrelevant_df, model_string, windowing, test_train_perc, 
+            irrelevant_df, output_dir, model_string, windowing, test_train_perc, 
             oversample_undersample, balancing_normal_failed, history_signal, 
             classifier, features_extraction_method, ranking, num_features, 
             overlap, split_technique, fillna_method, pca_components, smoothing_level
@@ -854,7 +859,7 @@ def initialize_classification(*args):
         if all_models == False:
             # Partition the dataset into training and testing sets for entire df
             Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
-                output_dir, df, model_string, windowing, test_train_perc, 
+                df, output_dir, model_string, windowing, test_train_perc, 
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level
@@ -863,7 +868,7 @@ def initialize_classification(*args):
         else:
             # Partition the dataset into training and testing sets for relevant_df
             Xtrain, ytrain, Xtest, ytest = initialize_partitioner(
-                output_dir, relevant_df, model_string, windowing, test_train_perc, 
+                relevant_df, output_dir, model_string, windowing, test_train_perc, 
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level
@@ -873,7 +878,6 @@ def initialize_classification(*args):
         return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
             classifier, CUDA_DEV, search_method, False, param_path
         )
-
 
 def initialize_partitioner(df, *args):
     # Define parameter names and create a dictionary of params

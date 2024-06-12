@@ -63,6 +63,9 @@ main_iface = gr.Interface(
         gr.Slider(minimum=0, maximum=1, step=0.1, value=0.3, label='Smoothing Level', info='Select the smoothing level.'),
         gr.Checkbox(value=False, label='Enable Transfer Learning', info='Check to enable transfer learning.'),
         gr.Checkbox(value=False, label='Train on All Models', info='Check to train on all models.'),
+        gr.Checkbox(value=False, label='Enable Genetic Algorithm', info='Enable Genetic Algorithm for Primary Feature Selection.'),
+        gr.Slider(minimum=5, maximum=50, step=1, value=10, label='Population Number', info='Number of individuals in each generation.'),
+        gr.Slider(minimum=1, maximum=10, step=1, value=2, label='Stop Criteria', info='Stop the genetic algorithm after certain generations.'),
     ],
     outputs=[
         gr.File(label='Download Log File', type='filepath'),

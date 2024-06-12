@@ -254,12 +254,12 @@ def matrix3d_to_datasets(matrix, window=1, divide_hdd=1, training_percentage=0.7
 
 def import_data(years, models, name, **args):
     """ Import hard drive data from csvs on disk.
-    
-    :param quarters: List of quarters to import (e.g., 1Q19, 4Q18, 3Q18, etc.)
+
+    :param years: List of years to import (e.g., 2019, 2018, etc.)
     :param models: List of the hard drive model numbers to import.
     :param columns: List of the columns to import.
     :return: Dataframe with hard drive data.
-    
+
     """
 
     # Read the correct .pkl file
@@ -1194,36 +1194,36 @@ def find_relevant_models(df):
 
     return relevant_models, irrelevant_models
 
-def feature_selection(df, num_features, test_type):
+def feature_selection(df, num_features, test_type, enable_ga_algorithm, n_pop, n_gen):
     """
     Selects the top 'num_features' features from the given dataframe based on statistical tests.
     Step 1.4: Feature selection from Classification.py
     Args:
         df (pandas.DataFrame): The input dataframe.
         num_features (int): The number of features to select.
+        test_type (str): The type of statistical test to use.
+        enable_ga_algorithm (bool): Whether to enable the Genetic Algorithm feature selection.
+        n_pop (int): The number of individuals in the population.
+        n_gen (int): The number of generations.
 
     Returns:
         pandas.DataFrame: The dataframe with the selected features.
     """
-    # n_pop = 10
-    # n_gen = 2
-    # y = df['predict_val']
-    # X = df.drop(columns=['predict_val'])
+    if enable_ga_algorithm == True:
+        y = df['predict_val']
+        X = df.drop(columns=['predict_val'])
 
-    # selector = GeneticFeatureSelector(X, y, n_population=n_pop, n_generation=n_gen)
+        selector = GeneticFeatureSelector(X, y, n_population=n_pop, n_generation=n_gen)
 
-    # logger.info("Running Genetic Algorithm for feature selection")
-    # hof = selector.run_genetic_algorithm()
+        logger.info("Running Genetic Algorithm for feature selection")
+        hof = selector.run_genetic_algorithm()
 
-    # accuracy, individual, header = selector.best_individual()
-    # logger.info(f'Best Accuracy: {accuracy}')
-    # logger.info(f'Number of Features in Subset: {individual.count(1)}')
-    # logger.info(f'Feature Subset: {header}')
+        accuracy, individual, header = selector.best_individual()
+        logger.info(f'Best Accuracy: {accuracy}')
+        logger.info(f'Number of Features in Subset: {individual.count(1)}')
+        logger.info(f'Feature Subset: {header}')
 
-    # df = df[header + ['predict_val']]
-
-    # # Print the column name of the df
-    # print("TEST DF Column:", list(df.columns))
+        df = df[header + ['predict_val']]
 
     # Step 1.4.1: Define empty lists and dictionary
     features = []
