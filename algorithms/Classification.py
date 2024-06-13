@@ -1282,8 +1282,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
-                "lr": TRAINING_PARAMS['lr'],
-                "weight_decay": TRAINING_PARAMS['weight_decay']  # L2 regularization parameter,
+                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
+                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),  # L2 regularization parameter,
                 "hidden_dim": TRAINING_PARAMS['hidden_dim'],
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
