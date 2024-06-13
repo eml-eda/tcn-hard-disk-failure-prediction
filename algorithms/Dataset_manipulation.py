@@ -391,7 +391,7 @@ def interpolate_ts(df, method='linear'):
         inner_df.interpolate(method=method, limit_direction='both', axis=0, inplace=True)
 
         # Specify the columns to round
-        columns_to_round = ['predict_val', 'validate_val']
+        columns_to_round = ['predict_val', 'validate_val', 'failure']
 
         # Add a small threshold and round all values below this threshold to 0
         threshold = 1e-10
@@ -466,8 +466,8 @@ def feature_extraction(X):
     2. Minimum of all the features and store in the second column.
     3. Maximum of all the features and store in the third column.
     4. Calculate the slope of the features and store in the fourth column.
-    5. Store the y-intercept of the linear regression line (i.e., the expected mean value of Y when all X=0) in the fifth column.
-    6. Use HMM to generate state sequences and store the most frequent state in the fifth column.
+    5. Optional: Store the y-intercept of the linear regression line (i.e., the expected mean value of Y when all X=0) in the fifth column.
+    6. Optional: Use HMM to generate state sequences and store the most frequent state in the fifth column.
     7. Calculate the standard deviation and store in the seventh column.
     8. Calculate the autocorrelation for lag-1 and store in the eighth column.
     
@@ -477,7 +477,7 @@ def feature_extraction(X):
     """
     samples, features, dim_window = X.shape
     logger.info(f'Extracting: samples: {samples}, features: {features}, dim_window: {dim_window}')
-    X_feature = np.zeros((samples, features, 8))
+    X_feature = np.zeros((samples, features, 6))
     # sum of all the features
     X_feature[:,:,0] = np.sum((X), axis=2)
     #print(f'Sum: {X_feature[:,:,0]}')
@@ -488,18 +488,21 @@ def feature_extraction(X):
     X_feature[:,:,2] = np.max((X), axis=2)
     #print(f'Max: {X_feature[:,:,2]}')
     # Calculate the slope of the features
-    #X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
+    X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
     #print(f'Similar slope: {X_feature[:,:,3]}')
     # Use Linear Regression to extract slope and intercept
+    '''
     for s in tqdm(range(samples), desc='Processing samples with LinearRegression', unit='sample', ncols=100):
         for f in range(features):
             model = LinearRegression()
             model.fit(np.arange(dim_window).reshape(-1, 1), X[s, f, :])
             X_feature[s, f, 3] = model.coef_[0]  # Slope
             X_feature[s, f, 4] = model.intercept_  # Intercept
+    '''
     #print(f'Coefficent: {X_feature[:,:,3]}')
     #print(f'Intercept: {X_feature[:,:,4]}')
     # Use HMM to generate state sequences
+    '''
     for f in tqdm(range(features), desc='Processing features with GaussianHMM', leave=False, unit='feature', ncols=100):
         feature_series = X[:, f, :]
         feature_series_reshaped = feature_series.reshape(-1, dim_window)
@@ -515,16 +518,17 @@ def feature_extraction(X):
             # Using the most frequent state as an additional feature
             most_frequent_state = np.bincount(state_seq).argmax()
             X_feature[s, f, 5] = most_frequent_state  # Store HMM result at index 5
+    '''
     #print(f'HMM state sequence: {X_feature[:, :, 5]}')
 
     # Calculate the standard deviation
-    X_feature[:, :, 6] = np.std(X, axis=2)
+    X_feature[:, :, 4] = np.std(X, axis=2)
     #print(f'Standard Deviation: {X_feature[:, :, 6]}')
 
     # Calculate the autocorrelation for lag-1
     for s in tqdm(range(samples), desc="Processing samples with Auto Correlation"):
         for f in range(features):
-            X_feature[s, f, 7] = np.corrcoef(X[s, f, :-1], X[s, f, 1:])[0, 1]
+            X_feature[s, f, 5] = np.corrcoef(X[s, f, :-1], X[s, f, 1:])[0, 1]
     #print(f'Autocorrelation: {X_feature[:, :, 7]}')
 
     return X_feature
