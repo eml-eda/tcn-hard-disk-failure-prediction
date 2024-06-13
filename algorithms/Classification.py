@@ -1,5 +1,6 @@
 import os
-import pandas as pd
+# import pandas as pd
+import modin.pandas as pd
 import sys
 from sklearn.cluster import DBSCAN
 from Dataset_manipulation import *
@@ -25,6 +26,8 @@ from sklearn.naive_bayes import GaussianNB
 from rgf.sklearn import RGFClassifier
 import json
 import logger
+import ray
+from ray import tune
 
 
 # Define default global values
@@ -192,6 +195,340 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     logger.info(f'Model saved as: {model_path}')
 
     return model_path
+
+def train_lstm(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='FPLSTM', id_number=1):
+    Xtrain, ytrain, Xtest, ytest = data
+
+    # Set training parameters
+    lr = config['lr']
+    weight_decay = config['weight_decay']
+    batch_size = config['batch_size']
+    epochs = config['epochs']
+    dropout = config['dropout']
+    lstm_hidden_s = config['lstm_hidden_s']
+    fc1_hidden_s = config['fc1_hidden_s']
+    optimizer_type = config['optimizer_type']
+    reg = config['reg']
+    num_workers = config['num_workers']
+    num_inputs = Xtrain.shape[1]
+
+    net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
+    
+    if incremental_learning:
+        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+        if transfer_learning:
+            for name, param in net.named_parameters():
+                if 'lstm' in name or 'do1' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    logger.info(f'Moving model to {device}')
+    net.to(device)
+
+    if optimizer_type == 'Adam':
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+    elif optimizer_type == 'SGD':
+        optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+    else:
+        raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+    trainer = UnifiedTrainer(
+        model=net,
+        optimizer=optimizer,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        reg=reg,
+        id_number=id_number,
+        model_type='LSTM',
+        num_workers=num_workers
+    )
+
+    trainer.run(Xtrain, ytrain, Xtest, ytest)
+
+    # Report the test accuracy to Ray Tune if tuning is enabled
+    if enable_tuning:
+        tune.report(accuracy=trainer.test_accuracy)
+
+def train_nnet(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='NNet', id_number=1):
+    Xtrain, ytrain, Xtest, ytest = data
+
+    # Set training parameters
+    batch_size = config['batch_size']
+    lr = config['lr']
+    weight_decay = config['weight_decay']
+    epochs = config['epochs']
+    dropout = config['dropout']
+    hidden_dim = config['hidden_dim']
+    num_layers = config['num_layers']
+    optimizer_type = config['optimizer_type']
+    reg = config['reg']
+    num_workers = config['num_workers']
+    data_dim = Xtrain.shape[2]  # Number of features in the input
+
+    logger.info(f'data dimension: {data_dim}, hidden_dim: {hidden_dim}')
+    
+    net = NNet(input_size=data_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
+    
+    if incremental_learning:
+        # Load the pre-trained model
+        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+        if transfer_learning:
+            # Freeze the LSTM layers (rnn), fine-tune the rest
+            for name, param in net.named_parameters():
+                if 'rnn' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+    else:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+    # Initialize the trainer
+    nnet_trainer = UnifiedTrainer(
+        model=net,
+        optimizer=optimizer,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        reg=reg,
+        id_number=id_number,
+        model_type='NNet',
+        num_workers=num_workers
+    )
+    
+    # Run training and testing
+    nnet_trainer.run(Xtrain, ytrain, Xtest, ytest)
+    
+    # Report the test accuracy to Ray Tune if tuning is enabled
+    if enable_tuning:
+        tune.report(accuracy=nnet_trainer.test_accuracy)
+
+def train_tcn(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='TCN', id_number=1):
+    Xtrain, ytrain, Xtest, ytest = data
+
+    # Set training parameters
+    batch_size = config['batch_size']
+    lr = config['lr']
+    weight_decay = config['weight_decay']
+    epochs = config['epochs']
+    optimizer_type = config['optimizer_type']
+    reg = config['reg']
+    num_workers = config['num_workers']
+    data_dim = Xtrain.shape[2]
+    num_inputs = Xtrain.shape[1]
+
+    logger.info(f'number of inputs: {num_inputs}, data_dim: {data_dim}')
+    
+    net = TCN_Network(data_dim, num_inputs)
+    
+    if incremental_learning:
+        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+        if transfer_learning:
+            for name, param in net.named_parameters():
+                if 'b0_' in name or 'b1_' in name or 'b2_' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+    else:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+    # Initialize the trainer
+    tcn_trainer = UnifiedTrainer(
+        model=net,
+        optimizer=optimizer,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        reg=reg,
+        id_number=id_number,
+        model_type='TCN',
+        num_workers=num_workers
+    )
+    
+    # Run training and testing
+    tcn_trainer.run(Xtrain, ytrain, Xtest, ytest)
+    
+    # Report the test accuracy to Ray Tune if tuning is enabled
+    if enable_tuning:
+        tune.report(accuracy=tcn_trainer.test_accuracy)
+
+def train_densenet(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='DenseNet', id_number=1):
+    Xtrain, ytrain, Xtest, ytest = data
+
+    # Set training parameters
+    batch_size = config['batch_size']
+    lr = config['lr']
+    weight_decay = config['weight_decay']
+    epochs = config['epochs']
+    hidden_size = config['hidden_size']
+    optimizer_type = config['optimizer_type']
+    reg = config['reg']
+    num_workers = config['num_workers']
+    num_inputs = Xtrain.shape[1]
+
+    logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
+    
+    net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
+    
+    if incremental_learning:
+        # Load the pre-trained model
+        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+        if transfer_learning:
+            for name, param in net.named_parameters():
+                if 'layers.0' in name or 'layers.2' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+    else:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+    # Initialize the trainer
+    densenet_trainer = UnifiedTrainer(
+        model=net,
+        optimizer=optimizer,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        reg=reg,
+        id_number=id_number,
+        model_type='DenseNet',
+        num_workers=num_workers
+    )
+    
+    # Run training and testing
+    densenet_trainer.run(Xtrain, ytrain, Xtest, ytest)
+    
+    # Report the test accuracy to Ray Tune if tuning is enabled
+    if enable_tuning:
+        tune.report(accuracy=densenet_trainer.test_accuracy)
+
+def train_mlp(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='MLP', id_number=1):
+    Xtrain, ytrain, Xtest, ytest = data
+
+    # Set training parameters
+    batch_size = config['batch_size']
+    lr = config['lr']
+    weight_decay = config['weight_decay']
+    epochs = config['epochs']
+    input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
+    hidden_dim = config['hidden_dim']
+    optimizer_type = config['optimizer_type']
+    reg = config['reg']
+    num_workers = config['num_workers']
+
+    logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
+
+    net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
+
+    if incremental_learning:
+        # Load the pre-trained model
+        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
+        if transfer_learning:
+            for name, param in net.named_parameters():
+                if 'lin1' in name or 'lin2' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+    else:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f'Moving model to {device}')
+        net.to(device)
+
+        if optimizer_type == 'Adam':
+            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+        elif optimizer_type == 'SGD':
+            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
+        else:
+            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+
+    # Initialize the trainer
+    mlp_trainer = UnifiedTrainer(
+        model=net,
+        optimizer=optimizer,
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        reg=reg,
+        id_number=id_number,
+        model_type='MLP',
+        num_workers=num_workers
+    )
+
+    # Run training and testing
+    mlp_trainer.run(Xtrain, ytrain, Xtest, ytest)
+
+    # Report the test accuracy to Ray Tune if tuning is enabled
+    if enable_tuning:
+        tune.report(accuracy=mlp_trainer.test_accuracy)
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
     """
@@ -462,81 +799,314 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         return train_and_evaluate_model(model, param_grid, 'RGF', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
-        # Initialize the TCNTrainer with the appropriate parameters
-        tcn_trainer = UnifiedTrainer(
-            model=args['net'],                      # The TCN model
-            optimizer=args['optimizer'],            # Optimizer for the model
-            epochs=args['epochs'],                  # Total number of epochs
-            batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr'],                          # Learning rate
-            reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number'],
-            model_type='TCN',
-            num_workers=args['num_workers']
-        )
-        # Run training and testing using the TCNTrainer
-        return tcn_trainer.run(X_train, Y_train, X_test, Y_test)
+        data = (Xtrain, ytrain, Xtest, ytest)
+
+        if enable_tuning:
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
+                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+
+            scheduler = ASHAScheduler(
+                metric="accuracy",
+                mode="max",
+                max_t=30,
+                grace_period=1,
+                reduction_factor=2
+            )
+
+            reporter = CLIReporter(
+                metric_columns=["accuracy", "training_iteration"]
+            )
+
+            result = tune.run(
+                tune.with_parameters(train_tcn, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                resources_per_trial={"cpu": 2, "gpu": 1},
+                config=config,
+                num_samples=10,
+                scheduler=scheduler,
+                progress_reporter=reporter
+            )
+
+            best_trial = result.get_best_trial("accuracy", "max", "last")
+            best_params = best_trial.config
+            print("Best trial config: {}".format(best_params))
+            print("Best trial final validation accuracy: {}".format(
+                best_trial.last_result["accuracy"]))
+
+            # Save the best parameters to a JSON file
+            save_best_params_to_json(best_params, classifier, id_number)
+        else:
+            # Define a default config for non-tuning run
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": TRAINING_PARAMS['lr'],
+                "weight_decay": TRAINING_PARAMS['weight_decay'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+            train_tcn(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+
+            # Save the selected parameters to a JSON file
+            save_best_params_to_json(config, classifier, id_number)
+
     elif classifier == 'LSTM':
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
-        lstm_trainer = UnifiedTrainer(
-            model=args['net'],                      # The MLP model
-            optimizer=args['optimizer'],            # Optimizer for the model
-            epochs=args['epochs'],                  # Total number of epochs
-            batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr'],                          # Learning rate
-            reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number'],
-            model_type='LSTM',
-            num_workers=args['num_workers']
-        )
-        # Run training and testing using the TCNTrainer
-        return lstm_trainer.run(X_train, Y_train, X_test, Y_test)
+        data = (Xtrain, ytrain, Xtest, ytest)
+
+        if enable_tuning:
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
+                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "lstm_hidden_s": TRAINING_PARAMS['lstm_hidden_s'],
+                "fc1_hidden_s": TRAINING_PARAMS['fc1_hidden_s'],
+                "dropout": tune.uniform(0.2, 0.3, TRAINING_PARAMS['dropout']),
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+
+            scheduler = ASHAScheduler(
+                metric="accuracy",
+                mode="max",
+                max_t=30,
+                grace_period=1,
+                reduction_factor=2
+            )
+
+            reporter = CLIReporter(
+                metric_columns=["accuracy", "training_iteration"]
+            )
+
+            result = tune.run(
+                tune.with_parameters(train_lstm, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                resources_per_trial={"cpu": 2, "gpu": 1},
+                config=config,
+                num_samples=10,
+                scheduler=scheduler,
+                progress_reporter=reporter
+            )
+
+            best_trial = result.get_best_trial("accuracy", "max", "last")
+            best_params = best_trial.config
+            print("Best trial config: {}".format(best_params))
+            print("Best trial final validation accuracy: {}".format(
+                best_trial.last_result["accuracy"]))
+
+            # Save the best parameters to a JSON file
+            save_best_params_to_json(best_params, classifier, id_number)
+        else:
+            # Define a default config for non-tuning run
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": TRAINING_PARAMS['lr'],
+                "weight_decay": TRAINING_PARAMS['weight_decay'],
+                "lstm_hidden_s": TRAINING_PARAMS['lstm_hidden_s'],
+                "fc1_hidden_s": TRAINING_PARAMS['fc1_hidden_s'],
+                "dropout": TRAINING_PARAMS['dropout'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+            train_lstm(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+
+            # Save the selected parameters to a JSON file
+            save_best_params_to_json(config, classifier, id_number)
+
     elif classifier == 'NNet':
-        # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
-        nnet_trainer = UnifiedTrainer(
-            model=args['net'],                      # The MLP model
-            optimizer=args['optimizer'],            # Optimizer for the model
-            epochs=args['epochs'],                  # Total number of epochs
-            batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr'],                          # Learning rate
-            reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number'],
-            model_type='NNet',
-            num_workers=args['num_workers']
-        )
-        # Run training and testing using the TCNTrainer
-        return nnet_trainer.run(X_train, Y_train, X_test, Y_test)
+        # Step 1.7.7: Perform Classification using NNet. Subflowchart: NNet Subflowchart. Train and validate the network using NNet
+        data = (Xtrain, ytrain, Xtest, ytest)
+
+        if enable_tuning:
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
+                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "hidden_dim": TRAINING_PARAMS['hidden_dim'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+
+            scheduler = ASHAScheduler(
+                metric="accuracy",
+                mode="max",
+                max_t=30,
+                grace_period=1,
+                reduction_factor=2
+            )
+
+            reporter = CLIReporter(
+                metric_columns=["accuracy", "training_iteration"]
+            )
+
+            result = tune.run(
+                tune.with_parameters(train_nnet, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                resources_per_trial={"cpu": 2, "gpu": 1},
+                config=config,
+                num_samples=10,
+                scheduler=scheduler,
+                progress_reporter=reporter
+            )
+
+            best_trial = result.get_best_trial("accuracy", "max", "last")
+            best_params = best_trial.config
+            print("Best trial config: {}".format(best_params))
+            print("Best trial final validation accuracy: {}".format(
+                best_trial.last_result["accuracy"]))
+
+            # Save the best parameters to a JSON file
+            save_best_params_to_json(best_params, classifier, id_number)
+        else:
+            # Define a default config for non-tuning run
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": TRAINING_PARAMS['lr'],
+                "weight_decay": TRAINING_PARAMS['weight_decay'],
+                "hidden_dim": TRAINING_PARAMS['hidden_dim'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+            train_nnet(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+
+            # Save the selected parameters to a JSON file
+            save_best_params_to_json(config, classifier, id_number)
+
     elif classifier == 'DenseNet':
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
-        densenet_trainer = UnifiedTrainer(
-            model=args['net'],                      # The MLP model
-            optimizer=args['optimizer'],            # Optimizer for the model
-            epochs=args['epochs'],                  # Total number of epochs
-            batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr'],                          # Learning rate
-            reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number'],
-            model_type='DenseNet',
-            num_workers=args['num_workers']
-        )
-        # Run training and testing using the TCNTrainer
-        return densenet_trainer.run(X_train, Y_train, X_test, Y_test)
+        data = (Xtrain, ytrain, Xtest, ytest)
+
+        if enable_tuning:
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
+                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "hidden_size": TRAINING_PARAMS['hidden_size'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+
+            scheduler = ASHAScheduler(
+                metric="accuracy",
+                mode="max",
+                max_t=30,
+                grace_period=1,
+                reduction_factor=2
+            )
+
+            reporter = CLIReporter(
+                metric_columns=["accuracy", "training_iteration"]
+            )
+
+            result = tune.run(
+                tune.with_parameters(train_densenet, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                resources_per_trial={"cpu": 2, "gpu": 1},
+                config=config,
+                num_samples=10,
+                scheduler=scheduler,
+                progress_reporter=reporter
+            )
+
+            best_trial = result.get_best_trial("accuracy", "max", "last")
+            best_params = best_trial.config
+            print("Best trial config: {}".format(best_params))
+            print("Best trial final validation accuracy: {}".format(
+                best_trial.last_result["accuracy"]))
+
+            # Save the best parameters to a JSON file
+            save_best_params_to_json(best_params, classifier, id_number)
+        else:
+            # Define a default config for non-tuning run
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": TRAINING_PARAMS['lr'],
+                "weight_decay": TRAINING_PARAMS['weight_decay'],
+                "hidden_size": TRAINING_PARAMS['hidden_size'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+            train_densenet(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+
+            # Save the selected parameters to a JSON file
+            save_best_params_to_json(config, classifier, id_number)
     elif classifier == 'MLP_Torch':
+        data = (Xtrain, ytrain, Xtest, ytest)
         # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
-        # Initialize the MLPTrainer with the appropriate parameters
-        mlp_trainer = UnifiedTrainer(
-            model=args['net'],                      # The MLP model
-            optimizer=args['optimizer'],            # Optimizer for the model
-            epochs=args['epochs'],                  # Total number of epochs
-            batch_size=args['batch_size'],          # Batch size for training
-            lr=args['lr'],                          # Learning rate
-            reg=args['reg'],                        # Regularization parameter
-            id_number=args['id_number'],
-            model_type='MLP',
-            num_workers=args['num_workers']
-        )
-        # Run training and testing using the MLPTrainer
-        return mlp_trainer.run(X_train, Y_train, X_test, Y_test)
+        if enable_tuning:
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
+                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),  # L2 regularization parameter
+                "hidden_dim": TRAINING_PARAMS['hidden_dim'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+
+            scheduler = ASHAScheduler(
+                metric="accuracy",
+                mode="max",
+                max_t=30,
+                grace_period=1,
+                reduction_factor=2
+            )
+
+            reporter = CLIReporter(
+                metric_columns=["accuracy", "training_iteration"]
+            )
+
+            result = tune.run(
+                tune.with_parameters(train_mlp, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                resources_per_trial={"cpu": 2, "gpu": 1},
+                config=config,
+                num_samples=10,
+                scheduler=scheduler,
+                progress_reporter=reporter
+            )
+
+            best_trial = result.get_best_trial("accuracy", "max", "last")
+            best_params = best_trial.config
+            print("Best trial config: {}".format(best_params))
+            print("Best trial final validation accuracy: {}".format(
+                best_trial.last_result["accuracy"]))
+
+            # Save the best parameters to a JSON file
+            save_best_params_to_json(best_params, classifier, id_number)
+        else:
+            # Define a default config for non-tuning run
+            config = {
+                "epochs": TRAINING_PARAMS['epochs'],
+                "batch_size": TRAINING_PARAMS['batch_size'],
+                "lr": TRAINING_PARAMS['lr'],
+                "weight_decay": TRAINING_PARAMS['weight_decay']  # L2 regularization parameter,
+                "hidden_dim": TRAINING_PARAMS['hidden_dim'],
+                "optimizer_type": TRAINING_PARAMS['optimizer_type'],
+                "reg": TRAINING_PARAMS['reg'],
+                "num_workers": TRAINING_PARAMS['num_workers'],
+            }
+            train_mlp(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+
+            # Save the selected parameters to a JSON file
+            save_best_params_to_json(config, classifier, id_number)
+
     elif classifier == 'MLP':
         # Step 1.7.8: Perform Classification using MLP.
         model = MLPClassifier()
@@ -662,6 +1232,10 @@ def set_training_params(*args):
     return f"Parameters successfully updated:\n" + "\n".join([f"{key}: {value}" for key, value in TRAINING_PARAMS.items()])
 
 def initialize_classification(*args):
+    ray.init(num_cpus="12")
+
+    os.environ["MODIN_ENGINE"] = "ray"  # Use ray as the execution engine
+
     # ------------------ #
     # Feature Selection Subflowchart
     # Step 1: Define empty lists and dictionary
@@ -719,7 +1293,7 @@ def initialize_classification(*args):
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
         'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'incremental_learning', 'transfer_learning', 'partition_models',
-        'enable_ga_algorithm', 'number_pop', 'number_gen'
+        'enable_tuning', 'enable_ga_algorithm', 'number_pop', 'number_gen'
     ]
 
     # Assign values directly from the dictionary
@@ -729,7 +1303,7 @@ def initialize_classification(*args):
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
         search_method, fillna_method, pca_components, smoothing_level, incremental_learning, transfer_learning, partition_models,
-        enable_ga_algorithm, number_pop, number_gen
+        enable_tuning, enable_ga_algorithm, number_pop, number_gen
     ) = dict(zip(param_names, args)).values()
     models = [m.strip() for m in model.split(',')]
     model_string = "_".join(models)
@@ -826,7 +1400,7 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, fillna_method, pca_components, smoothing_level
+        search_method, enable_tuning, fillna_method, pca_components, smoothing_level
     )
 
     if transfer_learning:
@@ -841,7 +1415,7 @@ def initialize_classification(*args):
 
             # Perform classification for the relevant_df
             perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, incremental_learning, False, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, False, param_path
             )
 
             # Partition the dataset into training and testing sets for the irrelevant_df
@@ -854,7 +1428,7 @@ def initialize_classification(*args):
 
             # Perform classification for the irrelevant_df
             return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, incremental_learning, True, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, enable_tuning, incremental_learning, True, param_path
             )
         else:
             # Partition the dataset into training and testing sets for the irrelevant_df
@@ -867,7 +1441,7 @@ def initialize_classification(*args):
 
             # Perform classification for the irrelevant_df
             return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, incremental_learning, True, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, True, param_path
             )
     else:
         if partition_models == False:
@@ -890,7 +1464,7 @@ def initialize_classification(*args):
 
         # Perform classification for the relevant_df
         return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-            classifier, CUDA_DEV, search_method, incremental_learning, False, param_path
+            classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, False, param_path
         )
 
 def initialize_partitioner(df, *args):
@@ -981,335 +1555,22 @@ def perform_classification(*args):
     param_names = [
         'Xtrain', 'ytrain', 'Xtest', 'ytest',
         'id_number', 'classifier', 'cuda_dev',
-        'search_method', 'incremental_learning', 'transfer_learning', 'param_path'
+        'search_method', 'enable_tuning', 'incremental_learning',
+        'transfer_learning', 'param_path'
     ]
 
     # Assign values directly from the dictionary
     (
         Xtrain, ytrain, Xtest, ytest,
         id_number, classifier, CUDA_DEV,
-        search_method, incremental_learning, transfer_learning, param_path
+        search_method, enable_tuning, incremental_learning,
+        transfer_learning, param_path
     ) = dict(zip(param_names, args)).values()
 
     # Step 1.6: Classifier Selection: set training parameters
     ####### CLASSIFIER PARAMETERS #######
     if CUDA_DEV != 'None':
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
-    if classifier == 'TCN':
-        # Step 1.6.1: Set training parameters for TCN. Subflowchart: TCN Subflowchart.
-        batch_size = TRAINING_PARAMS['batch_size']
-        lr = TRAINING_PARAMS['lr']
-        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
-        epochs = TRAINING_PARAMS['epochs']
-        optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']
-        num_workers = TRAINING_PARAMS['num_workers']
-        # Calculate the data dimension based on the shape of the training data, the dimension of the Xtrain is the same as Xtest
-        data_dim = Xtrain.shape[2]
-        num_inputs = Xtrain.shape[1]
-        logger.info(f'number of inputes: {num_inputs}, data_dim: {data_dim}')
-        net = TCN_Network(data_dim, num_inputs)
-        if incremental_learning:
-            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            if transfer_learning:
-                # Freeze specific layers (b0, b1, b2)
-                for name, param in net.named_parameters():
-                    if 'b0_' in name or 'b1_' in name or 'b2_' in name:
-                        param.requires_grad = False
-                    else:
-                        param.requires_grad = True
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-        else:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-        # Define the best parameters
-        best_params = {
-            'batch_size': batch_size,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'epochs': epochs,
-            'reg': reg,
-        }
-
-        # Save the best parameters to a JSON file
-        save_best_params_to_json(best_params, classifier, id_number)
-    elif classifier == 'LSTM':
-        # Step 1.6.2: Set training parameters for LSTM. Subflowchart: LSTM Subflowchart.
-        lr = TRAINING_PARAMS['lr']
-        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
-        batch_size = TRAINING_PARAMS['batch_size']
-        epochs = TRAINING_PARAMS['epochs']
-        dropout = TRAINING_PARAMS['dropout']
-        # Hidden state sizes (from [14])
-        # The dimensionality of the output space of the LSTM layer
-        lstm_hidden_s = TRAINING_PARAMS['lstm_hidden_s']
-        # The dimensionality of the output space of the first fully connected layer
-        fc1_hidden_s = TRAINING_PARAMS['fc1_hidden_s']
-        optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']
-        num_workers = TRAINING_PARAMS['num_workers']
-        num_inputs = Xtrain.shape[1]
-        net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
-        if incremental_learning:
-            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            if transfer_learning:
-                # Freeze specific layers (lstm and dropout)
-                for name, param in net.named_parameters():
-                    if 'lstm' in name or 'do1' in name:
-                        param.requires_grad = False
-                    else:
-                        param.requires_grad = True
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-        else:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-        # Define the best parameters
-        best_params = {
-            'batch_size': batch_size,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'epochs': epochs,
-            'dropout': dropout,
-            'lstm_hidden_s': lstm_hidden_s,
-            'fc1_hidden_s': fc1_hidden_s,
-            'reg': reg,
-        }
-
-        # Save the best parameters to a JSON file
-        save_best_params_to_json(best_params, classifier, id_number)
-    elif classifier == 'MLP_Torch':
-        # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
-        batch_size = TRAINING_PARAMS['batch_size']
-        lr = TRAINING_PARAMS['lr']
-        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
-        epochs = TRAINING_PARAMS['epochs']
-        input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input (5*32)
-        hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
-        optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']
-        num_workers = TRAINING_PARAMS['num_workers']
-        logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
-        net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
-        if incremental_learning:
-            # Load the pre-trained model
-            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            if transfer_learning:
-                # Freeze the initial layers (lin1 and lin2), fine-tune the rest
-                for name, param in net.named_parameters():
-                    if 'lin1' in name or 'lin2' in name:
-                        param.requires_grad = False
-                    else:
-                        param.requires_grad = True
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-        else:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-        # Define the best parameters
-        best_params = {
-            'batch_size': batch_size,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'epochs': epochs,
-            'hidden_dim': hidden_dim,
-            'reg': reg,
-        }
-
-        # Save the best parameters to a JSON file
-        save_best_params_to_json(best_params, classifier, id_number)
-    elif classifier == 'NNet':
-        # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
-        batch_size = TRAINING_PARAMS['batch_size']
-        lr = TRAINING_PARAMS['lr']
-        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
-        epochs = TRAINING_PARAMS['epochs']
-        dropout = TRAINING_PARAMS['dropout']
-        hidden_dim = TRAINING_PARAMS['hidden_dim']  # Example hidden dimension, can be adjusted
-        num_layers = TRAINING_PARAMS['num_layers']
-        optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']
-        num_workers = TRAINING_PARAMS['num_workers']
-        data_dim = Xtrain.shape[2]  # Number of features in the input (32)
-        logger.info(f'data dimension: {data_dim}, hidden_dim: {hidden_dim}')
-        net = NNet(input_size=data_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
-        if incremental_learning:
-            # Load the pre-trained model
-            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            if transfer_learning:
-                # Freeze the LSTM layers (rnn), fine-tune the rest
-                for name, param in net.named_parameters():
-                    if 'rnn' in name:
-                        param.requires_grad = False
-                    else:
-                        param.requires_grad = True
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-        else:
-            if torch.cuda.is_available():
-                logger.info('Moving model to cuda')
-                net.cuda()
-            else:
-                logger.info('Model to cpu')
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-        # Define the best parameters
-        best_params = {
-            'batch_size': batch_size,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'epochs': epochs,
-            'hidden_dim': hidden_dim,
-            'num_layers': num_layers,
-            'reg': reg,
-        }
-
-        # Save the best parameters to a JSON file
-        save_best_params_to_json(best_params, classifier, id_number)
-    elif classifier == 'DenseNet':
-        # Step 1.6.4: Set training parameters for MLP. Subflowchart: MLP Subflowchart.
-        batch_size = TRAINING_PARAMS['batch_size']
-        lr = TRAINING_PARAMS['lr']
-        weight_decay = TRAINING_PARAMS['weight_decay']  # L2 regularization parameter
-        epochs = TRAINING_PARAMS['epochs']
-        hidden_size = TRAINING_PARAMS['hidden_size']  # Example hidden dimension, can be adjusted
-        optimizer_type = TRAINING_PARAMS['optimizer_type']
-        reg = TRAINING_PARAMS['reg']
-        num_workers = TRAINING_PARAMS['num_workers']
-        num_inputs = Xtrain.shape[1]
-        logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
-        net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
-        if incremental_learning:
-            # Load the pre-trained model
-            net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-            if transfer_learning:
-                # Freeze the initial linear layers (layers.0 and layers.2), fine-tune the rest
-                for name, param in net.named_parameters():
-                    if 'layers.0' in name or 'layers.2' in name:
-                        param.requires_grad = False
-                    else:
-                        param.requires_grad = True
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-        else:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            logger.info(f'Moving model to {device}')
-            net.to(device)
-
-            if optimizer_type == 'Adam':
-                # We use the Adam optimizer, a method for Stochastic Optimization
-                optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-            elif optimizer_type == 'SGD':
-                # We use the Stochastic Gradient Descent optimizer
-                optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-            else:
-                raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-        # Define the best parameters
-        best_params = {
-            'batch_size': batch_size,
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'epochs': epochs,
-            'hidden_size': hidden_size,
-            'num_layers': num_layers,
-            'reg': reg,
-        }
-
-        # Save the best parameters to a JSON file
-        save_best_params_to_json(best_params, classifier, id_number)
 
     try:
         # Parameters for TCN and LSTM networks
@@ -1327,7 +1588,10 @@ def perform_classification(*args):
             lr=lr,
             reg=reg,
             id_number=id_number,
-            num_workers=num_workers
+            num_workers=num_workers,
+            enable_tuning=enable_tuning,
+            incremental_learning=incremental_learning,
+            transfer_learning=incremental_learning
         )
     except:
         # Parameters for RandomForest

@@ -14,3 +14,5 @@ xgboost
 colorlog
 statsmodels
 rgf_python
+modin[ray]
+ray

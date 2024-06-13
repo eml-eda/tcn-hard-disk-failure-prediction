@@ -1,4 +1,5 @@
-import pandas as pd
+# import pandas as pd
+import modin.pandas as pd
 import numpy as np
 import random
 from sklearn.linear_model import LogisticRegression
@@ -37,6 +38,9 @@ class GeneticFeatureSelector:
         Returns:
             None
         """
+        def biased_random():
+            return 1 if random.random() < 0.75 else 0
+
         # A positive weight indicates that the genetic algorithm should try to maximize that objective,
         # while a negative weight indicates that it should try to minimize that objective.
         creator.create("FitnessMax", base.Fitness, weights=(1.0,))
@@ -44,7 +48,7 @@ class GeneticFeatureSelector:
         creator.create("Individual", list, fitness=creator.FitnessMax)
 
         # Create toolbox
-        self.toolbox.register("attr_bool", random.randint, 0, 1)
+        self.toolbox.register("attr_bool", biased_random)
         # Initialize the individual with random binary values
         self.toolbox.register("individual", tools.initRepeat,
                               creator.Individual, self.toolbox.attr_bool, len(self.X.columns))

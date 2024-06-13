@@ -28,8 +28,12 @@ parser.add_argument('--search_technique', default='randomized')
 parser.add_argument('--fill_na_method', default='None')
 parser.add_argument('--pca_components', default=8)
 parser.add_argument('--smoothing_level', default=0.3)
+parser.add_argument('--incremental_learning', default=False)
 parser.add_argument('--transfer_learning', default=False)
-parser.add_argument('--train_on_all_models', default=False)
+parser.add_argument('--partion_model', default=False)
+parser.add_argument('--genetic_algorithm', default=False)
+parser.add_argument('--population_number', default=10)
+parser.add_argument('--stop_criteria', default=2)
 # Add more arguments as needed
 args = parser.parse_args()
 
@@ -64,6 +68,7 @@ main_iface = gr.Interface(
         gr.Checkbox(value=False, label='Enable Incremental Learning', info='Check to enable incremental learning.'),
         gr.Checkbox(value=False, label='Enable Transfer Learning', info='Check to enable transfer learning.'),
         gr.Checkbox(value=False, label='Enable Partition Model', info='Check to partition model and enable initial training for the relevant models and transfer learning for irrelevant models'),
+        gr.Checkbox(value=False, label='Enable Hyperparameter Tuning', info='Enable hyperparameter tuning for the model.'),
         gr.Checkbox(value=False, label='Enable Genetic Algorithm', info='Enable Genetic Algorithm for Primary Feature Selection.'),
         gr.Slider(minimum=5, maximum=50, step=1, value=10, label='Population Number', info='Number of individuals in each generation.'),
         gr.Slider(minimum=1, maximum=10, step=1, value=2, label='Stop Criteria', info='Stop the genetic algorithm after certain generations.'),

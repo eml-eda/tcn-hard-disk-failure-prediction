@@ -434,6 +434,7 @@ class UnifiedTrainer:
         self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
         self.test_writer = SummaryWriter(f'runs/{model_type}_Test_Graph')
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Get the device
+        self.test_accuracy = 0  # Initialize test_accuracy
 
     def FPLSTM_collate(self, batch):
         """
@@ -592,6 +593,7 @@ class UnifiedTrainer:
         )
         print('\n')
         report_metrics(true_labels, predictions.argmax(axis=1), ['FDR', 'FAR', 'F1', 'recall', 'precision', 'ROC AUC'], self.test_writer, epoch)
+        self.test_accuracy = avg_test_acc  # Store test accuracy
         #return predictions.argmax(axis=1)
 
     def run(self, Xtrain, ytrain, Xtest, ytest):

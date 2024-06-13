@@ -1,4 +1,5 @@
-import pandas as pd
+# import pandas as pd
+import modin.pandas as pd
 import numpy as np
 import math
 import pickle
