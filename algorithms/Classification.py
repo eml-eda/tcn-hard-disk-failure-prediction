@@ -131,39 +131,40 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
     else:
         scoring = {'silhouette': make_scorer(silhouette_score)}
 
-    if search_method == 'grid':
-        # Initialize GridSearchCV
-        search = GridSearchCV(estimator=model, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2, scoring=scoring, refit='f1')
-    elif search_method == 'randomized':
-        # Initialize RandomizedSearchCV
-        search = RandomizedSearchCV(estimator=model, param_distributions=param_grid, cv=3, n_jobs=-1, verbose=2, scoring=scoring, refit='f1', n_iter=100)
-    else:
-        raise ValueError(f'Invalid search method: {search_method}')
+    if param_grid:
+        if search_method == 'grid':
+            # Initialize GridSearchCV
+            search = GridSearchCV(estimator=model, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2, scoring=scoring, refit='f1')
+        elif search_method == 'randomized':
+            # Initialize RandomizedSearchCV
+            search = RandomizedSearchCV(estimator=model, param_distributions=param_grid, cv=3, n_jobs=-1, verbose=2, scoring=scoring, refit='f1', n_iter=n_iterations)
+        else:
+            raise ValueError(f'Invalid search method: {search_method}')
 
-    # Fit the search method
-    search.fit(X_train, Y_train)
+        # Fit the search method
+        search.fit(X_train, Y_train)
+        best_params = search.best_params_
+        best_model = search.best_estimator_
+    else:
+        best_model = model
+        best_params = model.get_params()
 
     if classifier_name in supervised_classifiers:
         # Calculate cross validation score, more splits reduce bias but increase variance
-        cv_scores = cross_val_score(search.best_estimator_, X_train, Y_train, cv=StratifiedKFold(n_splits=5))
+        cv_scores = cross_val_score(best_model, X_train, Y_train, cv=StratifiedKFold(n_splits=5))
 
         logger.info(f"Cross validation scores: {cv_scores}")
         logger.info(f"Mean cross validation score: {cv_scores.mean()}")
     else:
         # For unsupervised classifiers, calculate silhouette score
-        labels = search.best_estimator_.fit_predict(X_train)
+        labels = best_model.fit_predict(X_train)
         silhouette_avg = silhouette_score(X_train, labels)
         logger.info(f"Silhouette score: {silhouette_avg}")
 
-    # Get the best parameters
-    best_params = search.best_params_
     logger.info(f"Best parameters: {best_params}")
 
     # Save the best parameters to a JSON file
     save_best_params_to_json(best_params, classifier_name, id_number)
-
-    # Get the best estimator
-    best_model = search.best_estimator_
 
     # Split the training data into multiple batches
     batch_size = len(X_train) // n_iterations
@@ -253,6 +254,21 @@ def train_lstm(config, data, enable_tuning=True, incremental_learning=False, tra
         tune.report(accuracy=trainer.test_accuracy)
 
 def train_nnet(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='NNet', id_number=1):
+    """
+    Trains a neural network classifier.
+
+    Args:
+        config (dict): A dictionary containing the training parameters.
+        data (tuple): A tuple containing the training and testing data.
+        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
+        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
+        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
+        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
+        id_number (int, optional): The ID number of the classifier. Defaults to 1.
+
+    Returns:
+        None
+    """
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
@@ -325,6 +341,21 @@ def train_nnet(config, data, enable_tuning=True, incremental_learning=False, tra
         tune.report(accuracy=nnet_trainer.test_accuracy)
 
 def train_tcn(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='TCN', id_number=1):
+    """
+    Trains a neural network classifier.
+
+    Args:
+        config (dict): A dictionary containing the training parameters.
+        data (tuple): A tuple containing the training and testing data.
+        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
+        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
+        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
+        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
+        id_number (int, optional): The ID number of the classifier. Defaults to 1.
+
+    Returns:
+        None
+    """
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
@@ -393,6 +424,21 @@ def train_tcn(config, data, enable_tuning=True, incremental_learning=False, tran
         tune.report(accuracy=tcn_trainer.test_accuracy)
 
 def train_densenet(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='DenseNet', id_number=1):
+    """
+    Trains a neural network classifier.
+
+    Args:
+        config (dict): A dictionary containing the training parameters.
+        data (tuple): A tuple containing the training and testing data.
+        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
+        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
+        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
+        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
+        id_number (int, optional): The ID number of the classifier. Defaults to 1.
+
+    Returns:
+        None
+    """
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
@@ -462,6 +508,21 @@ def train_densenet(config, data, enable_tuning=True, incremental_learning=False,
         tune.report(accuracy=densenet_trainer.test_accuracy)
 
 def train_mlp(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='MLP', id_number=1):
+    """
+    Trains a neural network classifier.
+
+    Args:
+        config (dict): A dictionary containing the training parameters.
+        data (tuple): A tuple containing the training and testing data.
+        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
+        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
+        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
+        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
+        id_number (int, optional): The ID number of the classifier. Defaults to 1.
+
+    Returns:
+        None
+    """
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
@@ -530,7 +591,7 @@ def train_mlp(config, data, enable_tuning=True, incremental_learning=False, tran
     if enable_tuning:
         tune.report(accuracy=mlp_trainer.test_accuracy)
 
-def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args):
+def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
     """
     Perform classification using the specified classifier.
     --- Step 1.7: Perform Classification
@@ -540,7 +601,6 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     - X_test (array-like): Test data features.
     - Y_test (array-like): Test data labels.
     - classifier (str): The classifier to use. Options: 'RandomForest', 'TCN', 'LSTM'.
-    - metric (str): The metric to evaluate the classification performance.
     - **args: Additional arguments specific to each classifier.
 
     Returns:
@@ -569,12 +629,26 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'bootstrap': [True, False]
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'n_estimators': 1000,
+            'min_samples_split': 2,
+            'min_samples_leaf': 1,
+            'max_features': 'auto',
+            'max_depth': None,
+            'criterion': 'gini',
+            'bootstrap': True
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'KNeighbors':
         # Step 1.7.2: Perform Classification using KNeighbors.
         try:
@@ -591,12 +665,22 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'metric': ['euclidean', 'manhattan', 'minkowski']
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'n_neighbors': 5,
+            'weights': 'uniform',
+            'metric': 'minkowski'
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'DecisionTree':
         # Step 1.7.3: Perform Classification using DecisionTree.
         try:
@@ -615,12 +699,24 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'max_features': ['auto', 'sqrt', 'log2', None]
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'criterion': 'gini',
+            'max_depth': None,
+            'min_samples_split': 2,
+            'min_samples_leaf': 1,
+            'max_features': None
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'LogisticRegression':
         # Step 1.7.4: Perform Classification using LogisticRegression.
         try:
@@ -638,12 +734,23 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'max_iter': [100, 1000, 2500, 5000]
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'penalty': 'l2',
+            'C': 1.0,
+            'solver': 'lbfgs',
+            'max_iter': 100
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'SVM':
         # Step 1.7.5: Perform Classification using SVM.
         try:
@@ -660,12 +767,22 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'kernel': ['linear', 'poly', 'rbf', 'sigmoid']
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'C': 1.0,
+            'gamma': 'scale',
+            'kernel': 'rbf'
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'XGB':
         # Step 1.7.7: Perform Classification using XGBoost.
         try:
@@ -687,12 +804,27 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'objective': ['binary:logistic']
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'learning_rate': 0.1,
+            'n_estimators': 100,
+            'max_depth': 3,
+            'min_child_weight': 1,
+            'gamma': 0.1,
+            'subsample': 1.0,
+            'colsample_bytree': 1.0,
+            'objective': 'binary:logistic'
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'IsolationForest':
         # Step 1.7.9: Perform Classification using IsolationForest.
         try:
@@ -711,12 +843,24 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'bootstrap': [True, False]
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'n_estimators': 100,
+            'max_samples': 'auto',
+            'contamination': 'auto',
+            'max_features': 1.0,
+            'bootstrap': False
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'ExtraTrees':
         try:
             best_params = load_best_params_from_json(classifier, args['id_number'])
@@ -725,17 +869,29 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 
         model = ExtraTreesClassifier()
 
+        # Define the parameter grid
         param_grid = {
             'n_estimators': [100, 200, 300, 400, 500],
             'max_features': ['auto', 'sqrt', 'log2'],
             'bootstrap': [True, False]
         }
 
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'n_estimators': 100,
+            'max_features': 'auto',
+            'bootstrap': False
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'GradientBoosting':
         try:
             best_params = load_best_params_from_json(classifier, args['id_number'])
@@ -744,6 +900,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 
         model = GradientBoostingClassifier()
 
+        # Define the parameter grid
         param_grid = {
             'n_estimators': [100, 200, 300, 400, 500],
             'learning_rate': [0.1, 0.05, 0.01],
@@ -752,11 +909,24 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'min_samples_leaf': [1, 2, 5, 10]
         }
 
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'n_estimators': 100,
+            'learning_rate': 0.1,
+            'max_depth': 3,
+            'min_samples_split': 2,
+            'min_samples_leaf': 1
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'NaiveBayes':
         # Step 1.7.6: Perform Classification using Naive Bayes.
         try:
@@ -770,11 +940,18 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         # Naive Bayes does not have any hyperparameters that need to be tuned
         param_grid = {}
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {}
 
-        return train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
+            param_grid = {}
+
+        return train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'RGF':
         # Step 1.7.7: Perform Classification using Regularized Greedy Forest (RGF).
         try:
@@ -785,23 +962,33 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         model = RGFClassifier()
 
         # Define the parameter grid
-        # You can define some hyperparameters here. For example:
         param_grid = {
             'max_leaf': [1000, 1200, 1500],
             'algorithm': ["RGF", "RGF_Opt", "RGF_Sib"],
             'test_interval': [100, 600, 900]
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'max_leaf': 1000,
+            'algorithm': 'RGF',
+            'test_interval': 100
+        }
 
-        return train_and_evaluate_model(model, param_grid, 'RGF', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
+            param_grid = {}
+
+        return train_and_evaluate_model(model, param_grid, 'RGF', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
         data = (Xtrain, ytrain, Xtest, ytest)
 
-        if enable_tuning:
+        if args['enable_tuning']:
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
@@ -861,7 +1048,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
         data = (Xtrain, ytrain, Xtest, ytest)
 
-        if enable_tuning:
+        if args['enable_tuning']:
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
@@ -927,7 +1114,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         # Step 1.7.7: Perform Classification using NNet. Subflowchart: NNet Subflowchart. Train and validate the network using NNet
         data = (Xtrain, ytrain, Xtest, ytest)
 
-        if enable_tuning:
+        if args['enable_tuning']:
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
@@ -989,7 +1176,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
         data = (Xtrain, ytrain, Xtest, ytest)
 
-        if enable_tuning:
+        if args['enable_tuning']:
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
@@ -1049,7 +1236,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
     elif classifier == 'MLP_Torch':
         data = (Xtrain, ytrain, Xtest, ytest)
         # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
-        if enable_tuning:
+        if args['enable_tuning']:
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
@@ -1109,19 +1296,42 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
 
     elif classifier == 'MLP':
         # Step 1.7.8: Perform Classification using MLP.
+        try:
+            best_params = load_best_params_from_json(classifier, args['id_number'])
+        except FileNotFoundError:
+            best_params = None
+
         model = MLPClassifier()
 
         # Define the parameter grid
         param_grid = {
-            'hidden_layer_sizes': [(50,50,50), (50,100,50), (100,)],
+            'hidden_layer_sizes': [(50, 50, 50), (50, 100, 50), (100,)],
             'activation': ['tanh', 'relu'],
             'solver': ['sgd', 'adam'],
             'alpha': [0.0001, 0.05],
-            'learning_rate': ['constant','adaptive'],
+            'learning_rate': ['constant', 'adaptive'],
             'max_iter': [200, 500, 1000]
         }
 
-        return train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        # Default parameters
+        default_params = {
+            'hidden_layer_sizes': (100,),
+            'activation': 'relu',
+            'solver': 'adam',
+            'alpha': 0.0001,
+            'learning_rate': 'constant',
+            'max_iter': 200
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
+            param_grid = {}
+
+        return train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+
     elif classifier == 'DBSCAN':
         # Step 1.7.3: Perform Classification using DBSCAN.
         try:
@@ -1139,12 +1349,22 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, metric, **args)
             'metric': ['euclidean', 'manhattan', 'chebyshev']
         }
 
-        # If the best parameters exist, use them
-        if best_params:
-            model.set_params(**best_params)
+        # Default parameters
+        default_params = {
+            'eps': 0.5,
+            'min_samples': 5,
+            'leaf_size': 30,
+            'metric': 'euclidean'
+        }
+
+        if not args['enable_tuning']:
+            if best_params:
+                model.set_params(**best_params)
+            else:
+                model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'DBSCAN', X_train, Y_train, X_test, Y_test, args['id_number'], metric, args['search_method'], n_iterations)
+        return train_and_evaluate_model(model, param_grid, 'DBSCAN', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
 
 def factors(n):
     """
