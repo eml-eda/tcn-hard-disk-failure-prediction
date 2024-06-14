@@ -25,11 +25,29 @@ suffixes = {
     'data_Q4_2018.zip': None,
     'data_Q1_2019.zip': None,
     'data_Q2_2019.zip': None,
-    'data_Q3_2019.zip': None
+    'data_Q3_2019.zip': None,
+    'data_Q4_2019.zip': None,
+    'data_Q1_2020.zip': None,
+    'data_Q2_2020.zip': None,
+    'data_Q3_2020.zip': None,
+    'data_Q4_2020.zip': None,
+    'data_Q1_2021.zip': None,
+    'data_Q2_2021.zip': None,
+    'data_Q3_2021.zip': None,
+    'data_Q4_2021.zip': None,
+    'data_Q1_2022.zip': None,
+    'data_Q2_2022.zip': None,
+    'data_Q3_2022.zip': None,
+    'data_Q4_2022.zip': None,
+    'data_Q1_2023.zip': None,
+    'data_Q2_2023.zip': None,
+    'data_Q3_2023.zip': None,
+    'data_Q4_2023.zip': None,
+    'data_Q1_2024.zip': None,
 }
 
 failed = False  # This should be set based on your specific criteria or kept as a placeholder
-years = [str(year) for year in range(2013, 2020)]
+years = [str(year) for year in range(2013, 2024)]
 
 # Define the directory of HDD_dataset, it is inside project folder, and now parallel with the 'algorithms' and 'datasets_creation' folders
 script_dir = os.path.dirname(os.path.abspath(__file__))

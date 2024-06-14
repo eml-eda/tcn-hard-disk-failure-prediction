@@ -28,6 +28,7 @@ import json
 import logger
 import ray
 from ray import tune
+from ray.tune.schedulers import ASHAScheduler, CLIReporter
 
 
 # Define default global values
@@ -762,8 +763,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
 
         # Define the parameter grid
         param_grid = {
-            'C': [0.1, 1, 10, 100, 1000],  
-            'gamma': [1, 0.1, 0.01, 0.001, 0.0001], 
+            'C': [0.1, 1, 10, 100, 1000],
+            'gamma': [1, 0.1, 0.01, 0.001, 0.0001],
             'kernel': ['linear', 'poly', 'rbf', 'sigmoid']
         }
 
@@ -1027,7 +1028,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 best_trial.last_result["accuracy"]))
 
             # Save the best parameters to a JSON file
-            save_best_params_to_json(best_params, classifier, id_number)
+            save_best_params_to_json(best_params, classifier, args['id_number'])
         else:
             # Define a default config for non-tuning run
             config = {
@@ -1042,7 +1043,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             train_tcn(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
 
             # Save the selected parameters to a JSON file
-            save_best_params_to_json(config, classifier, id_number)
+            save_best_params_to_json(config, classifier, args['id_number'])
 
     elif classifier == 'LSTM':
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
@@ -1090,7 +1091,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 best_trial.last_result["accuracy"]))
 
             # Save the best parameters to a JSON file
-            save_best_params_to_json(best_params, classifier, id_number)
+            save_best_params_to_json(best_params, classifier, args['id_number'])
         else:
             # Define a default config for non-tuning run
             config = {
@@ -1108,7 +1109,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             train_lstm(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
 
             # Save the selected parameters to a JSON file
-            save_best_params_to_json(config, classifier, id_number)
+            save_best_params_to_json(config, classifier, args['id_number'])
 
     elif classifier == 'NNet':
         # Step 1.7.7: Perform Classification using NNet. Subflowchart: NNet Subflowchart. Train and validate the network using NNet
@@ -1154,7 +1155,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 best_trial.last_result["accuracy"]))
 
             # Save the best parameters to a JSON file
-            save_best_params_to_json(best_params, classifier, id_number)
+            save_best_params_to_json(best_params, classifier, args['id_number'])
         else:
             # Define a default config for non-tuning run
             config = {
@@ -1170,7 +1171,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             train_nnet(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
 
             # Save the selected parameters to a JSON file
-            save_best_params_to_json(config, classifier, id_number)
+            save_best_params_to_json(config, classifier, args['id_number'])
 
     elif classifier == 'DenseNet':
         # Step 1.7.7: Perform Classification using LSTM. Subflowchart: LSTM Subflowchart. Train and validate the network using LSTM
@@ -1216,7 +1217,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 best_trial.last_result["accuracy"]))
 
             # Save the best parameters to a JSON file
-            save_best_params_to_json(best_params, classifier, id_number)
+            save_best_params_to_json(best_params, classifier, args['id_number'])
         else:
             # Define a default config for non-tuning run
             config = {
@@ -1232,7 +1233,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             train_densenet(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
 
             # Save the selected parameters to a JSON file
-            save_best_params_to_json(config, classifier, id_number)
+            save_best_params_to_json(config, classifier, args['id_number'])
     elif classifier == 'MLP_Torch':
         data = (Xtrain, ytrain, Xtest, ytest)
         # Step 1.7.8: Perform Classification using MLP. Subflowchart: MLP Subflowchart. Train and validate the network using MLP
@@ -1276,7 +1277,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 best_trial.last_result["accuracy"]))
 
             # Save the best parameters to a JSON file
-            save_best_params_to_json(best_params, classifier, id_number)
+            save_best_params_to_json(best_params, classifier, args['id_number'])
         else:
             # Define a default config for non-tuning run
             config = {
@@ -1292,7 +1293,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             train_mlp(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
 
             # Save the selected parameters to a JSON file
-            save_best_params_to_json(config, classifier, id_number)
+            save_best_params_to_json(config, classifier, args['id_number'])
 
     elif classifier == 'MLP':
         # Step 1.7.8: Perform Classification using MLP.
@@ -1452,7 +1453,7 @@ def set_training_params(*args):
     return f"Parameters successfully updated:\n" + "\n".join([f"{key}: {value}" for key, value in TRAINING_PARAMS.items()])
 
 def initialize_classification(*args):
-    ray.init(num_cpus="12")
+    ray.init()
 
     os.environ["MODIN_ENGINE"] = "ray"  # Use ray as the execution engine
 
@@ -1769,6 +1770,7 @@ def initialize_partitioner(df, *args):
     if classifier in classifiers and windowing == 1:
         Xtrain = Xtrain.reshape(Xtrain.shape[0], Xtrain.shape[1] * Xtrain.shape[2])
         Xtest = Xtest.reshape(Xtest.shape[0], Xtest.shape[1] * Xtest.shape[2])
+    return Xtrain, ytrain, Xtest, ytest
 
 def perform_classification(*args):
     # Define parameter names and create a dictionary of params
@@ -1792,7 +1794,23 @@ def perform_classification(*args):
     if CUDA_DEV != 'None':
         os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_DEV
 
-    try:
+    classifiers = [
+        'RandomForest', 
+        'KNeighbors', 
+        'DecisionTree', 
+        'LogisticRegression', 
+        'SVM', 
+        'XGB', 
+        'MLP', 
+        'IsolationForest', 
+        'ExtraTrees', 
+        'GradientBoosting', 
+        'NaiveBayes', 
+        'DBSCAN',
+        'RGF'
+    ]
+
+    if classifier in classifiers:
         # Parameters for TCN and LSTM networks
         model_path = classification(
             X_train=Xtrain,
@@ -1801,19 +1819,12 @@ def perform_classification(*args):
             Y_test=ytest,
             classifier=classifier,
             metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
-            net=net,
-            optimizer=optimizer,
-            epochs=epochs,
-            batch_size=batch_size,
-            lr=lr,
-            reg=reg,
             id_number=id_number,
-            num_workers=num_workers,
             enable_tuning=enable_tuning,
             incremental_learning=incremental_learning,
-            transfer_learning=incremental_learning
+            transfer_learning=transfer_learning
         )
-    except:
+    else:
         # Parameters for RandomForest
         model_path = classification(
             X_train=Xtrain,

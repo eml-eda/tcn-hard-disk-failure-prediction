@@ -296,16 +296,19 @@ def import_data(years, models, name, **args):
 
                 # Filter the data based on the model number or manufacturer prefix
                 # If the 'manufacturer' key is not found in the args dictionary or its value is 'custom', we use the 'model' key to filter the data
-                if args.get('manufacturer', 'custom') != 'custom':
-                    model_data = data[data['model'].str.startswith(args['manufacturer'])].copy()
-                    unique_models.update(model_data['model'].unique())
-                    all_data.append(model_data)  # Append the filtered data to all_data
+                manufacturer = args.get('manufacturer', 'custom')
+                if manufacturer != 'custom' and 'model' in data.columns and not data.empty:
+                    model_data = data[data['model'].str.startswith(manufacturer)]
+                    if not model_data.empty:
+                        unique_models.update(model_data['model'].unique())
+                        all_data.append(model_data)
                 else:
                     for model in models:
-                        model_data = data[data.model == model].copy()
-                        unique_models.add(model)
-                        model_data.failure = model_data.failure.astype('int')
-                        all_data.append(model_data)
+                        if 'model' in data.columns and not data.empty and model in data['model'].values:
+                            model_data = data[data['model'] == model].copy()
+                            unique_models.add(model)
+                            model_data.failure = model_data.failure.astype('int')
+                            all_data.append(model_data)
 
         logger.info(f"Unique models: {unique_models}")
         df = pd.concat(all_data, ignore_index=True)
@@ -640,6 +643,7 @@ class DatasetPartitioner:
         windowed_df = self.preprocess_dataset(windowed_df)
         # Add exponential smoothing method
         logger.info('Performing exponential smoothing...')
+        # TODO:
         for serial_num, group in tqdm(windowed_df.groupby('serial_number'), desc="Processing groups", leave=False, unit="group", ncols=100):
             for col in group.columns:
                 if col.startswith('smart'):
@@ -758,15 +762,13 @@ class DatasetPartitioner:
         Returns:
         - DataFrame: The windowed dataframe.
         """
-        # Convert the initial DataFrame to a Dask DataFrame for heavy operations
-        chunk_columns = 100000
-        windowed_df = dd.from_pandas(self.df.copy(), npartitions=int(len(self.df)/chunk_columns) + 1)
+        windowed_df = self.df.copy()
         if self.overlap == 1:  # If the overlap option is chosed as complete overlap
             # The following code will generate self.window_dim - 1 columns for each column in the dataset
             for i in np.arange(self.window_dim - 1):
                 print(f'Concatenating time - {i} \r', end="\r")
                 # Shift the dataframe and concatenate along the columns
-                windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
         elif self.overlap == 2:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)
@@ -778,17 +780,13 @@ class DatasetPartitioner:
                 for i in np.arange(down_factor - 1):
                     total_shifts += previous_down_factor
                     print(f'Concatenating time - {total_shifts} \r', end="\r")
-                    windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                    windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
                 previous_down_factor *= down_factor
 
-                # Compute intermediate result to apply sampling
-                windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
                 # Under sample the dataframe based on the serial numbers and the factor
                 indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
                 # Update windowed_df based on the indexes, undersamples the DataFrame based on the serial numbers and the factor down_factor, reducing the number of rows in the DataFrame.
                 windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
-                # Convert back to Dask DataFrame
-                windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
         else:  # If the overlap is other value, then we only completely overlap the dataset for the failed HDDs, and dynamically overlap the dataset for the good HDDs
             # Get the factors of window_dim
             window_dim_divisors = self.factors(self.window_dim)
@@ -800,30 +798,25 @@ class DatasetPartitioner:
             for i in np.arange(self.window_dim - 1):
                 print(f'Concatenating time - {i} \r', end="\r")
                 # Shift the dataframe and concatenate along the columns
-                windowed_df_failed = dd.concat([self.df.shift(i + 1), windowed_df_failed], axis=1)
+                windowed_df_failed = pd.concat([self.df.shift(i + 1), windowed_df_failed], axis=1)
             for down_factor in window_dim_divisors:
                 # Shift the dataframe by the factor and concatenate
                 for i in np.arange(down_factor - 1):
                     total_shifts += previous_down_factor
                     print(f'Concatenating time - {total_shifts} \r', end="\r")
-                    windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+                    windowed_df = pd.concat([self.df.shift(i + 1), windowed_df], axis=1)
                 previous_down_factor *= down_factor
 
-                # Compute intermediate result to apply sampling
-                windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
                 # Under sample the dataframe based on the serial numbers and the factor
                 indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
                 # Update windowed_df based on the indexes
                 windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
-                # Convert back to Dask DataFrame
-                windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
 
-            windowed_df = dd.concat([windowed_df, windowed_df_failed])
+            windowed_df = pd.concat([windowed_df, windowed_df_failed])
             windowed_df.reset_index(inplace=True, drop=True)
 
-        # Compute the final Dask DataFrame to pandas DataFrame
-        final_df = windowed_df.compute()
         # Generate the final DataFrame
+        final_df = windowed_df
         final_df.to_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
         return self.rename_columns(final_df)
 
