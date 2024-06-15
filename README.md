@@ -85,23 +85,28 @@ tcn-hard-disk-failure-prediction
 
 ## Description of each file
 
-- `Classification.py`: This script contains the code to train and test various classification models including RandomForest, TCN, and LSTM.
-
-- `Dataset_manipulation.py`: This script is used for manipulating the dataset. It could include tasks such as cleaning, preprocessing, feature extraction, etc.
-
-- `Networks_pytorch.py`: This script contains the implementation of the TCN and LSTM networks using PyTorch.
-
-- `README.txt`: This file provides an overview of the algorithms directory.
-
-- `files_to_failed.py`: This script is used to convert files to a failed state, as part of the dataset creation process.
-
-- `find_failed.py`: This script is used to find and mark failed instances in the dataset.
-
-- `get_dataset.py`: This script is used to fetch and possibly preprocess the dataset for the hard disk failure prediction task.
-
-- `README.txt`: This file provides an overview of the datasets_creation directory.
-
-- `toList.py`: This script is used to convert certain data structures to a list format, possibly for easier manipulation or usage in the project.
+- Folder: **algorithms**
+  - `app.py`: This script is used to display the gradio interface and run the classification functions.
+  - `Classification.py`: This script contains the code to train and test various classification models including RandomForest, TCN, and LSTM.
+  - `Dataset_manipulation.py`: This script is used for manipulating the dataset. It could include tasks such as cleaning, preprocessing, feature extraction, etc.
+  - `GeneticFeatureSelector.py`: This script is used to select the best features using the genetic algorithm.
+  - `json_param.py`: This script is used to load the parameters from the JSON file or save the to the JSON file.
+  - `logger.py`: This script is used to log the information during the training and testing process.
+  - `network_training.py`: This script is used to train the deep learning networks or the classification models.
+  - `Networks_pytorch.py`: This script contains the implementation of the deep learning networks using PyTorch.
+  - `utils.py`: This script contains the utility functions used in the training and testing process.
+- Folder: **datasets_creation**
+  - `app.py`: This script is used to display the gradio interface and run the dataset creation functions.
+  - `get_dataset.py`: This script is used to fetch and possibly preprocess the dataset for the hard disk failure prediction task.
+  - `save_to_grouped_list.py`: This script is used to convert certain data structures to a list format, possibly for easier manipulation or usage in the project.
+  - `save_to_list.py`: This script is used to find and mark failed instances in the dataset.
+  - TODO: `save_to_mysql.py`: This script is used to save the dataset to a MySQL database.
+  - `save_to_pkl.py`: This script is used to convert files to a failed state, as part of the dataset creation process.
+- Folder: **inference**
+  - `app.py`: This script is used to display the gradio interface and run the inference functions.
+  - `Dataset_processing.py`: This script is used to preprocess the dataset for the inference task.
+  - `Inference.py`: This script is used to run the inference on the preprocessed dataset.
+  - `Networks_inference.py`: This script contains the implementation of the deep learning networks for the inference task.
 
 ## Wiki
 
@@ -121,10 +126,10 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
    pip install -r requirements.txt
    ```
 
-3. Download the dataset via the `get_dataset.py` script:
+3. Download the dataset via the `app.py` script:
 
    ```bash
-   python .\datasets_creation\get_dataset.py
+   python .\datasets_creation\app.py
    ```
 
    After running the script, the dataset will be downloaded and saved in the `HDD_dataset` directory in the parent folder of the repository. (The total dataset and zip package will be around 50 GB, make sure you have enough space on your disk.)
