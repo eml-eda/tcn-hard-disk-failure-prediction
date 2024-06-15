@@ -191,26 +191,23 @@ def infer(model, X, classifier):
 def initialize_inference(*args):
     # Define parameter names and create a dictionary of params
     param_names = [
-        'id_number', 'classifier', 'cuda_dev', 'pca_components', 'smoothing_level', 'csv_file'
+        'id_number', 'serial_number', 'classifier', 'cuda_dev', 'pca_components', 'smoothing_level', 'augmentation_method', 'csv_file'
     ]
 
     # Assign values directly from the dictionary
     (
-        id_number, classifier, CUDA_DEV, pca_components, smoothing_level, csv_file
+        id_number, serial_number, classifier, CUDA_DEV, pca_components, smoothing_level, augmentation_method, csv_file
     ) = dict(zip(param_names, args)).values()
 
     params = read_params_from_json(classifier, id_number)
 
     # Unpack the params dictionary into individual variables
-    serial_number = params['serial_number']
     overlap = params['overlap']
     windowing = params['windowing']
     history_signal = params['history_signal']
     features_extraction_method = params['features_extraction_method']
-    interpolate_technique = params['interpolate_technique']
     smart_attributes = params['smart_attributes']
     days_considered_as_failure = params['days_considered_as_failure']
-    smoothing_level = params['smoothing_level']
 
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
 
@@ -231,6 +228,7 @@ def initialize_inference(*args):
         window_dim=history_signal,
         days=days_considered_as_failure,
         smoothing_level=smoothing_level,
+        augmentation_method=augmentation_method
     )
 
     # Step x.1: Feature Extraction
@@ -281,7 +279,6 @@ def initialize_inference(*args):
         hidden_size = INFERENCE_PARAMS['hidden_size']
         model = DenseNet(num_inputs, hidden_size)
 
-    # TODO:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info(f'Moving model to {device}')
     model.to(device)

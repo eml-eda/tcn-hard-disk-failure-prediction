@@ -17,11 +17,13 @@ main_iface = gr.Interface(
     fn=initialize_inference,
     inputs=[
         gr.Textbox(value='01234567', label='ID Number', info='Enter the ID number(s).'),
+        gr.Textbox(value='', label='Model', info='Enter the model type(s) for infering.'),
         gr.Dropdown(choices=['TCN', 'LSTM', 'MLP', 'RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'MLP_Torch', 'XGB', 'IsolationForest', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes'], value='TCN', label='Classifier', info='Select the classifier type.'),
         gr.Dropdown(choices=['custom', 'PCA', 'None'], value='None', label='Features Extraction Method', info='Select the features extraction method.'),
         gr.Dropdown(choices=['0', '1', ''], value='0', label='CUDA DEV', info='Select CUDA device.'),
         gr.Slider(minimum=1, maximum=8, step=1, value=8, label='PCA Components', info='Select the number of PCA components to generate.'),
         gr.Slider(minimum=0, maximum=1, step=0.1, value=0.3, label='Smoothing Level', info='Select the smoothing level.'),
+        gr.Slider(choices=['duplicate', 'interpolate'], value='interpolate', label='Augmentation Method', info='Select the augmentation method.'),
         gr.File(label="Upload CSV"),  # File upload option
     ],
     outputs=gr.Textbox(),

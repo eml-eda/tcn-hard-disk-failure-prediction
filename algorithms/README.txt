@@ -1,3 +1,0 @@
-- Classification.py: it is the file to launch to get the performance.
-- Dataset_manipulation.py: it contains many functions that are used inside classification.py
-- Networks_pytorch.py: it contains the two network tested, the train/test functions and the function to have the performance from the whole trained network.

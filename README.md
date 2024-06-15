@@ -52,21 +52,32 @@ isbn="978-3-030-71593-9"
 ## Code Structure
 
 The code is structured as follows:
-```
+
+```shell
 tcn-hard-disk-failure-prediction
 │
 ├── algorithms
+│   ├── app.py
 │   ├── Classification.py
 │   ├── Dataset_manipulation.py
+│   ├── GeneticFeatureSelector.py
+│   ├── json_param.py
+│   ├── network_training.py
 │   ├── Networks_pytorch.py
-│   └── README.txt
+│   └── utils.py
 │
 ├── datasets_creation
 │   ├── files_to_failed.py
 │   ├── find_failed.py
 │   ├── get_dataset.py
-│   ├── README.txt
+│   ├── config.py
 │   └── toList.py
+│
+├── inference
+│   ├── app.py
+│   ├── Dataset_processing.py
+│   ├── Inference.py
+│   └── Networks_inference.py
 │
 ├── .gitignore
 └── README.md
@@ -124,13 +135,22 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
    python .\algorithms\app.py
    ```
 
-   The script will preprocess the dataset and save the preprocessed dataset in the `HDD_dataset` directory, then it will train and test the classification models on the dataset.
+   The script will preprocess the dataset from the `HDD_dataset` directory and save the preprocessed dataset as pkl file in the `output` folder, then it will train and test the classification models on the dataset.
+
+5. Run the inference script:
+
+   ```bash
+   python .\inference\app.py
+   ```
+
+   The script will preprocess the inference data from uploaded csv file, then it will load the trained model and start the predictions on the parsed data.
 
 ## Core Parts of this Algorithm
 
 1. **Feature Selection**: Currently we use the t-test for feature selection. We select the top 18 features based on the t-test scores.
-2. **Dataset Unbalancing**: Currently we use SMOTE for data augmentation on the failed disk samples to balance the dataset, and use RandomUnderSampler for the majority class.
-3. **Data Training**: Currently we use RandomForest, TCN, and LSTM for training the data, and use 'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', and 'precision' metrics to evaluate the model, according to the result, the TCN model performs better than the other models.
+2. **Dataset Unbalancing**: Currently we use SMOTE for upsampling on the failed disk samples to balance the dataset, and use RandomUnderSampler for downsampling the majority class.
+3. **Hyperparameter Tuning**: Currently we use sklearn GridSearchCV and RandomSearchCV for hyperparameter tuning, and use 'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', and 'precision' metrics to evaluate the model. (We use the 'F1' score as the main metric for hyperparameter tuning). For deep learning model, we use the ray tuning library for hyperparameter tuning.
+4. **Data Training**: Currently we use RandomForest, TCN, and LSTM for training the data, and use 'RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', and 'precision' metrics to evaluate the model, according to the result, the TCN model performs better than the other models.
 
 ## Articles
 
@@ -159,6 +179,10 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
 12. [Proactive error prediction to improve storage system reliability](https://www.usenix.org/system/files/conference/atc17/atc17-mahdisoltani.pdf), 2017
 
 13. [A PROACTIVE DRIVE RELIABILITY MODEL TO PREDICT FAILURES IN THE HARD DISK DRIVES](http://www.iraj.in/journal/journal_file/journal_pdf/3-78-140957031862-68.pdf), 2014
+
+14. [Predicting Hard Disk Failures in Data Centers Using Temporal Convolutional Neural Networks](https://www.researchgate.net/publication/350044713_Predicting_Hard_Disk_Failures_in_Data_Centers_Using_Temporal_Convolutional_Neural_Networks), 2021
+
+15. [Transfer Learning based Failure Prediction for Minority Disks in Large Data Centers of Heterogeneous Disk Systems](https://dl.acm.org/doi/10.1145/3337821.3337881), 2019
 
 ## TODO
 
