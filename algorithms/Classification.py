@@ -21,7 +21,7 @@ import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler, CLIReporter
 from json_param import save_best_params_to_json, load_best_params_from_json, save_params_to_json
-from network_training import train_and_evaluate_model, train_lstm, train_nnet, train_tcn, train_densenet, train_mlp
+from network_training import train_and_evaluate_model, train_dl_model
 
 
 # Define default global values
@@ -38,7 +38,12 @@ TRAINING_PARAMS = {
     'hidden_size': 8,  # DenseNet
     'num_layers': 1,  # NNet
     'optimizer_type': 'Adam',
-    'num_workers': 8
+    'num_workers': 8,
+    'scheduler_type': 'ReduceLROnPlateau',
+    'scheduler_factor': 0.1,
+    'scheduler_patience': 10,
+    'scheduler_step_size': 30,
+    'scheduler_gamma': 0.9,
 }
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
@@ -442,12 +447,21 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
-                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
-                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "lr": tune.loguniform(TRAINING_PARAMS['lr'] / 10, TRAINING_PARAMS['lr'] * 10),
+                "weight_decay": tune.loguniform(TRAINING_PARAMS['weight_decay'] / 10, TRAINING_PARAMS['weight_decay'] * 10),
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
+                "scheduler_type": TRAINING_PARAMS['scheduler_type']
             }
+            if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
 
             scheduler = ASHAScheduler(
                 metric="accuracy",
@@ -462,7 +476,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             )
 
             result = tune.run(
-                tune.with_parameters(train_tcn, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                tune.with_parameters(train_dl_model, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='TCN', id_number=args['id_number']),
                 resources_per_trial={"cpu": 2, "gpu": 1},
                 config=config,
                 num_samples=10,
@@ -491,8 +505,17 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
                 }
-            train_tcn(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+                if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                    config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                    config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                    config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
+            train_dl_model(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='TCN', id_number=args['id_number'])
 
             # Save the selected parameters to a JSON file
             save_best_params_to_json(config, classifier, args['id_number'])
@@ -505,15 +528,24 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
-                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
-                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "lr": tune.loguniform(TRAINING_PARAMS['lr'] / 10, TRAINING_PARAMS['lr'] * 10),
+                "weight_decay": tune.loguniform(TRAINING_PARAMS['weight_decay'] / 10, TRAINING_PARAMS['weight_decay'] * 10),
                 "lstm_hidden_s": TRAINING_PARAMS['lstm_hidden_s'],
                 "fc1_hidden_s": TRAINING_PARAMS['fc1_hidden_s'],
                 "dropout": tune.uniform(0.2, 0.3, TRAINING_PARAMS['dropout']),
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
+                "scheduler_type": TRAINING_PARAMS['scheduler_type']
             }
+            if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
 
             scheduler = ASHAScheduler(
                 metric="accuracy",
@@ -528,7 +560,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             )
 
             result = tune.run(
-                tune.with_parameters(train_lstm, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                tune.with_parameters(train_dl_model, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='FPLSTM', id_number=args['id_number']),
                 resources_per_trial={"cpu": 2, "gpu": 1},
                 config=config,
                 num_samples=10,
@@ -560,8 +592,17 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
                 }
-            train_lstm(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+                if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                    config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                    config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                    config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
+            train_dl_model(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='FPLSTM', id_number=args['id_number'])
 
             # Save the selected parameters to a JSON file
             save_best_params_to_json(config, classifier, args['id_number'])
@@ -574,13 +615,22 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
-                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
-                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),
+                "lr": tune.loguniform(TRAINING_PARAMS['lr'] / 10, TRAINING_PARAMS['lr'] * 10),
+                "weight_decay": tune.loguniform(TRAINING_PARAMS['weight_decay'] / 10, TRAINING_PARAMS['weight_decay'] * 10),
                 "hidden_dim": TRAINING_PARAMS['hidden_dim'],
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
+                "scheduler_type": TRAINING_PARAMS['scheduler_type']
             }
+            if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
 
             scheduler = ASHAScheduler(
                 metric="accuracy",
@@ -595,7 +645,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             )
 
             result = tune.run(
-                tune.with_parameters(train_nnet, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                tune.with_parameters(train_dl_model, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='NNet', id_number=args['id_number']),
                 resources_per_trial={"cpu": 2, "gpu": 1},
                 config=config,
                 num_samples=10,
@@ -625,8 +675,17 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
                 }
-            train_nnet(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+                if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                    config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                    config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                    config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
+            train_dl_model(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='NNet', id_number=args['id_number'])
 
             # Save the selected parameters to a JSON file
             save_best_params_to_json(config, classifier, args['id_number'])
@@ -645,7 +704,16 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
+                "scheduler_type": TRAINING_PARAMS['scheduler_type']
             }
+            if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
 
             scheduler = ASHAScheduler(
                 metric="accuracy",
@@ -660,7 +728,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             )
 
             result = tune.run(
-                tune.with_parameters(train_densenet, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                tune.with_parameters(train_dl_model, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='DenseNet', id_number=args['id_number']),
                 resources_per_trial={"cpu": 2, "gpu": 1},
                 config=config,
                 num_samples=10,
@@ -690,8 +758,17 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
                 }
-            train_densenet(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+                if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                    config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                    config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                    config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
+            train_dl_model(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='DenseNet', id_number=args['id_number'])
 
             # Save the selected parameters to a JSON file
             save_best_params_to_json(config, classifier, args['id_number'])
@@ -702,13 +779,22 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             config = {
                 "epochs": TRAINING_PARAMS['epochs'],
                 "batch_size": TRAINING_PARAMS['batch_size'],
-                "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
-                "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),  # L2 regularization parameter
+                "lr": tune.loguniform(TRAINING_PARAMS['lr'] / 10, TRAINING_PARAMS['lr'] * 10),
+                "weight_decay": tune.loguniform(TRAINING_PARAMS['weight_decay'] / 10, TRAINING_PARAMS['weight_decay'] * 10),  # L2 regularization parameter
                 "hidden_dim": TRAINING_PARAMS['hidden_dim'],
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
+                "scheduler_type": TRAINING_PARAMS['scheduler_type']
             }
+            if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+            elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
 
             scheduler = ASHAScheduler(
                 metric="accuracy",
@@ -723,7 +809,7 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
             )
 
             result = tune.run(
-                tune.with_parameters(train_mlp, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning']),
+                tune.with_parameters(train_dl_model, data=data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='MLP', id_number=args['id_number']),
                 resources_per_trial={"cpu": 2, "gpu": 1},
                 config=config,
                 num_samples=10,
@@ -747,14 +833,23 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 config = {
                     "epochs": TRAINING_PARAMS['epochs'],
                     "batch_size": TRAINING_PARAMS['batch_size'],
-                    "lr": tune.loguniform(1e-4, 1e-1, TRAINING_PARAMS['lr']),
-                    "weight_decay": tune.loguniform(1e-5, 1e-2, TRAINING_PARAMS['weight_decay']),  # L2 regularization parameter,
+                    "lr": tune.loguniform(TRAINING_PARAMS['lr'] / 10, TRAINING_PARAMS['lr'] * 10),
+                    "weight_decay": tune.loguniform(TRAINING_PARAMS['weight_decay'] / 10, TRAINING_PARAMS['weight_decay'] * 10),  # L2 regularization parameter,
                     "hidden_dim": TRAINING_PARAMS['hidden_dim'],
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
                 }
-            train_mlp(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'])
+                if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
+                    config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ExponentialLR':
+                    config["scheduler_gamma"] = TRAINING_PARAMS['scheduler_gamma']
+                elif TRAINING_PARAMS['scheduler_type'] == 'ReduceLROnPlateau':
+                    config["scheduler_factor"] = TRAINING_PARAMS['scheduler_factor']
+                    config["scheduler_patience"] = TRAINING_PARAMS['scheduler_patience']
+            train_dl_model(config, data, enable_tuning=args['enable_tuning'], incremental_learning=args['incremental_learning'], transfer_learning=args['transfer_learning'], classifier='MLP', id_number=args['id_number'])
 
             # Save the selected parameters to a JSON file
             save_best_params_to_json(config, classifier, args['id_number'])
@@ -832,7 +927,36 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
         return train_and_evaluate_model(model, param_grid, 'DBSCAN', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
 
 def set_training_params(*args):
-    param_names = ['reg', 'batch_size', 'lr', 'weight_decay', 'epochs', 'dropout', 'lstm_hidden_s', 'fc1_hidden_s', 'hidden_dim', 'hidden_size', 'num_layers', 'optimizer_type', 'num_workers']
+    """
+    Set the training parameters for the model.
+
+    Args:
+        *args: Variable number of arguments representing the training parameters.
+
+    Returns:
+        str: A string indicating that the parameters have been successfully updated.
+
+    """
+    param_names = [
+        'reg',
+        'batch_size',
+        'lr',
+        'weight_decay',
+        'epochs',
+        'dropout',
+        'lstm_hidden_s',
+        'fc1_hidden_s',
+        'hidden_dim',
+        'hidden_size',
+        'num_layers',
+        'optimizer_type',
+        'num_workers',
+        'scheduler_type',
+        'scheduler_factor',
+        'scheduler_patience',
+        'scheduler_step_size',
+        'scheduler_gamma'
+    ]
     # Use the global keyword when modifying global variables
     global TRAINING_PARAMS
     TRAINING_PARAMS = dict(zip(param_names, args))

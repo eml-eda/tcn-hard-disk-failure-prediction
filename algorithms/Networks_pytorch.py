@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import os
 import logger
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, ExponentialLR, StepLR
 from torch.autograd import grad
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -406,7 +406,7 @@ class TCNDataset(torch.utils.data.Dataset):
         return (self.x_tensors[idx], self.y_tensors[idx])
 
 class UnifiedTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number, model_type, num_workers):
+    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number, model_type, num_workers, scheduler_type, scheduler_factor, scheduler_patience, scheduler_step_size, scheduler_gamma):
         """
         Initialize the UnifiedTrainer with all necessary components.
 
@@ -420,6 +420,11 @@ class UnifiedTrainer:
             id_number (int): The ID number of the model.
             model_type (str): The type of model ('LSTM', 'TCN', 'MLP').
             num_workers (int): Number of workers for the DataLoader.
+            scheduler_type (str): The type of scheduler ('ReduceLROnPlateau', 'ExponentialLR').
+            scheduler_factor (float): The factor for the scheduler.
+            scheduler_patience (int): The patience for the scheduler.
+            scheduler_step_size (int): The step size for the scheduler.
+            scheduler_gamma (float): The gamma for the scheduler.
         """
         self.model = model
         self.optimizer = optimizer
@@ -431,7 +436,18 @@ class UnifiedTrainer:
         self.model_type = model_type
         self.num_workers = num_workers
         self.train_writer = SummaryWriter(f'runs/{model_type}_Training_Graph')
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+        if scheduler_type == 'ReduceLROnPlateau':
+            # factor is the factor by which the learning rate will be reduced. new_lr = lr * factor
+            # patience is the number of epochs with no improvement after which learning rate will be reduced
+            self.scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=scheduler_factor, patience=scheduler_patience)  # factor=0.1, patience=10
+        elif scheduler_type == 'ExponentialLR':
+            self.scheduler = ExponentialLR(optimizer, gamma=scheduler_gamma)  # gamma=0.9
+        elif scheduler_type == 'StepLR':
+            # step_size is the number of epochs after which the learning rate is multiplied by gamma.
+            # gamma is the factor by which the learning rate is multiplied after each step_size epochs.
+            self.scheduler = StepLR(optimizer, step_size=scheduler_step_size, gamma=1 - scheduler_gamma)  # step_size=30, gamma=0.1
+        else:
+            raise ValueError(f"Invalid scheduler_type: {scheduler_type}")
         self.test_writer = SummaryWriter(f'runs/{model_type}_Test_Graph')
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Get the device
         self.test_accuracy = 0  # Initialize test_accuracy

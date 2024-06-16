@@ -877,20 +877,6 @@ class DatasetPartitioner:
         """
         return iter((self.Xtrain, self.Xtest, self.ytrain, self.ytest))
 
-
-def calculate_pearson_correlation_matrix(data):
-    """
-    Calculate the Pearson correlation matrix for the given data.
-    """
-    def safe_pearsonr(u, v):
-        if np.std(u) == 0 or np.std(v) == 0:
-            return np.nan
-        return pearsonr(u, v)[0]
-    # Fill NaN values with the mean of the column
-    data_filled = data.fillna(data.mean())
-    pairwise_corr = pairwise_distances(data_filled.T, metric=lambda u, v: safe_pearsonr(u, v))
-    return pd.DataFrame(pairwise_corr, index=data.columns, columns=data.columns)
-
 def find_relevant_models(df):
     """
     Calculate the Kullback-Leibler Divergence between different models based on smart attributes over time,

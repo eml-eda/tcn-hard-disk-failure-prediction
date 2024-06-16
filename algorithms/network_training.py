@@ -109,7 +109,7 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
 
     return model_path
 
-def train_lstm(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='FPLSTM', id_number=1):
+def train_dl_model(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='FPLSTM', id_number=1):
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
@@ -118,20 +118,55 @@ def train_lstm(config, data, enable_tuning=True, incremental_learning=False, tra
     batch_size = config['batch_size']
     epochs = config['epochs']
     dropout = config['dropout']
-    lstm_hidden_s = config['lstm_hidden_s']
-    fc1_hidden_s = config['fc1_hidden_s']
     optimizer_type = config['optimizer_type']
     reg = config['reg']
     num_workers = config['num_workers']
-    num_inputs = Xtrain.shape[1]
+    scheduler_type = config['scheduler_type']
 
-    net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
-    
+    if config['scheduler_type'] == 'StepLR':
+        scheduler_step_size = config['scheduler_step_size']
+        scheduler_gamma = config['scheduler_gamma']
+    elif config['scheduler_type'] == 'ExponentialLR':
+        scheduler_gamma = config['scheduler_gamma']
+    elif config['scheduler_type'] == 'ReduceLROnPlateau':
+        scheduler_factor = config['scheduler_factor']
+        scheduler_patience = config['scheduler_patience']
+
+    num_inputs = Xtrain.shape[1]
+    data_dim = Xtrain.shape[2] if classifier not in ['FPLSTM', 'DenseNet'] else None
+    hidden_dim = config.get('hidden_dim')
+    num_layers = config.get('num_layers')
+    lstm_hidden_s = config.get('lstm_hidden_s')
+    fc1_hidden_s = config.get('fc1_hidden_s')
+    hidden_size = config.get('hidden_size')
+
+    if classifier == 'FPLSTM':
+        net = FPLSTM(lstm_hidden_s, fc1_hidden_s, num_inputs, 2, dropout)
+    elif classifier == 'NNet':
+        net = NNet(input_size=data_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
+    elif classifier == 'TCN':
+        net = TCN_Network(data_dim, num_inputs)
+    elif classifier == 'DenseNet':
+        net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
+    elif classifier == 'MLP':
+        input_dim = Xtrain.shape[1] * Xtrain.shape[2]
+        net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
+    else:
+        raise ValueError('Invalid classifier type. Please choose a valid classifier.')
+
     if incremental_learning:
         net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
         if transfer_learning:
             for name, param in net.named_parameters():
-                if 'lstm' in name or 'do1' in name:
+                if classifier == 'FPLSTM' and ('lstm' in name or 'do1' in name):
+                    param.requires_grad = False
+                elif classifier == 'NNet' and 'rnn' in name:
+                    param.requires_grad = False
+                elif classifier == 'TCN' and ('b0_' in name or 'b1_' in name or 'b2_' in name):
+                    param.requires_grad = False
+                elif classifier == 'DenseNet' and ('layers.0' in name or 'layers.2' in name):
+                    param.requires_grad = False
+                elif classifier == 'MLP' and ('lin1' in name or 'lin2' in name):
                     param.requires_grad = False
                 else:
                     param.requires_grad = True
@@ -140,12 +175,8 @@ def train_lstm(config, data, enable_tuning=True, incremental_learning=False, tra
     logger.info(f'Moving model to {device}')
     net.to(device)
 
-    if optimizer_type == 'Adam':
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-    elif optimizer_type == 'SGD':
-        optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-    else:
-        raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
+    optimizer_cls = optim.Adam if optimizer_type == 'Adam' else optim.SGD
+    optimizer = optimizer_cls(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
 
     trainer = UnifiedTrainer(
         model=net,
@@ -155,350 +186,16 @@ def train_lstm(config, data, enable_tuning=True, incremental_learning=False, tra
         lr=lr,
         reg=reg,
         id_number=id_number,
-        model_type='LSTM',
-        num_workers=num_workers
+        model_type=classifier,
+        num_workers=num_workers,
+        scheduler_type=scheduler_type,
+        scheduler_factor=scheduler_factor,
+        scheduler_patience=scheduler_patience,
+        scheduler_step_size=scheduler_step_size,
+        scheduler_gamma=scheduler_gamma
     )
 
     trainer.run(Xtrain, ytrain, Xtest, ytest)
 
-    # Report the test accuracy to Ray Tune if tuning is enabled
     if enable_tuning:
         tune.report(accuracy=trainer.test_accuracy)
-
-def train_nnet(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='NNet', id_number=1):
-    """
-    Trains a neural network classifier.
-
-    Args:
-        config (dict): A dictionary containing the training parameters.
-        data (tuple): A tuple containing the training and testing data.
-        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
-        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
-        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
-        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
-        id_number (int, optional): The ID number of the classifier. Defaults to 1.
-
-    Returns:
-        None
-    """
-    Xtrain, ytrain, Xtest, ytest = data
-
-    # Set training parameters
-    batch_size = config['batch_size']
-    lr = config['lr']
-    weight_decay = config['weight_decay']
-    epochs = config['epochs']
-    dropout = config['dropout']
-    hidden_dim = config['hidden_dim']
-    num_layers = config['num_layers']
-    optimizer_type = config['optimizer_type']
-    reg = config['reg']
-    num_workers = config['num_workers']
-    data_dim = Xtrain.shape[2]  # Number of features in the input
-
-    logger.info(f'data dimension: {data_dim}, hidden_dim: {hidden_dim}')
-    
-    net = NNet(input_size=data_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout)
-    
-    if incremental_learning:
-        # Load the pre-trained model
-        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-        if transfer_learning:
-            # Freeze the LSTM layers (rnn), fine-tune the rest
-            for name, param in net.named_parameters():
-                if 'rnn' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-    else:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-    # Initialize the trainer
-    nnet_trainer = UnifiedTrainer(
-        model=net,
-        optimizer=optimizer,
-        epochs=epochs,
-        batch_size=batch_size,
-        lr=lr,
-        reg=reg,
-        id_number=id_number,
-        model_type='NNet',
-        num_workers=num_workers
-    )
-    
-    # Run training and testing
-    nnet_trainer.run(Xtrain, ytrain, Xtest, ytest)
-    
-    # Report the test accuracy to Ray Tune if tuning is enabled
-    if enable_tuning:
-        tune.report(accuracy=nnet_trainer.test_accuracy)
-
-def train_tcn(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='TCN', id_number=1):
-    """
-    Trains a neural network classifier.
-
-    Args:
-        config (dict): A dictionary containing the training parameters.
-        data (tuple): A tuple containing the training and testing data.
-        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
-        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
-        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
-        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
-        id_number (int, optional): The ID number of the classifier. Defaults to 1.
-
-    Returns:
-        None
-    """
-    Xtrain, ytrain, Xtest, ytest = data
-
-    # Set training parameters
-    batch_size = config['batch_size']
-    lr = config['lr']
-    weight_decay = config['weight_decay']
-    epochs = config['epochs']
-    optimizer_type = config['optimizer_type']
-    reg = config['reg']
-    num_workers = config['num_workers']
-    data_dim = Xtrain.shape[2]
-    num_inputs = Xtrain.shape[1]
-
-    logger.info(f'number of inputs: {num_inputs}, data_dim: {data_dim}')
-    
-    net = TCN_Network(data_dim, num_inputs)
-    
-    if incremental_learning:
-        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-        if transfer_learning:
-            for name, param in net.named_parameters():
-                if 'b0_' in name or 'b1_' in name or 'b2_' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-    else:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-    # Initialize the trainer
-    tcn_trainer = UnifiedTrainer(
-        model=net,
-        optimizer=optimizer,
-        epochs=epochs,
-        batch_size=batch_size,
-        lr=lr,
-        reg=reg,
-        id_number=id_number,
-        model_type='TCN',
-        num_workers=num_workers
-    )
-    
-    # Run training and testing
-    tcn_trainer.run(Xtrain, ytrain, Xtest, ytest)
-    
-    # Report the test accuracy to Ray Tune if tuning is enabled
-    if enable_tuning:
-        tune.report(accuracy=tcn_trainer.test_accuracy)
-
-def train_densenet(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='DenseNet', id_number=1):
-    """
-    Trains a neural network classifier.
-
-    Args:
-        config (dict): A dictionary containing the training parameters.
-        data (tuple): A tuple containing the training and testing data.
-        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
-        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
-        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
-        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
-        id_number (int, optional): The ID number of the classifier. Defaults to 1.
-
-    Returns:
-        None
-    """
-    Xtrain, ytrain, Xtest, ytest = data
-
-    # Set training parameters
-    batch_size = config['batch_size']
-    lr = config['lr']
-    weight_decay = config['weight_decay']
-    epochs = config['epochs']
-    hidden_size = config['hidden_size']
-    optimizer_type = config['optimizer_type']
-    reg = config['reg']
-    num_workers = config['num_workers']
-    num_inputs = Xtrain.shape[1]
-
-    logger.info(f'number of inputs: {num_inputs}, hidden_size: {hidden_size} x {hidden_size}')
-    
-    net = DenseNet(input_size=num_inputs, hidden_size=hidden_size)
-    
-    if incremental_learning:
-        # Load the pre-trained model
-        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-        if transfer_learning:
-            for name, param in net.named_parameters():
-                if 'layers.0' in name or 'layers.2' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-    else:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-    # Initialize the trainer
-    densenet_trainer = UnifiedTrainer(
-        model=net,
-        optimizer=optimizer,
-        epochs=epochs,
-        batch_size=batch_size,
-        lr=lr,
-        reg=reg,
-        id_number=id_number,
-        model_type='DenseNet',
-        num_workers=num_workers
-    )
-    
-    # Run training and testing
-    densenet_trainer.run(Xtrain, ytrain, Xtest, ytest)
-    
-    # Report the test accuracy to Ray Tune if tuning is enabled
-    if enable_tuning:
-        tune.report(accuracy=densenet_trainer.test_accuracy)
-
-def train_mlp(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='MLP', id_number=1):
-    """
-    Trains a neural network classifier.
-
-    Args:
-        config (dict): A dictionary containing the training parameters.
-        data (tuple): A tuple containing the training and testing data.
-        enable_tuning (bool, optional): Whether to report the test accuracy to Ray Tune. Defaults to True.
-        incremental_learning (bool, optional): Whether to perform incremental learning. Defaults to False.
-        transfer_learning (bool, optional): Whether to perform transfer learning. Defaults to False.
-        classifier (str, optional): The type of classifier. Defaults to 'NNet'.
-        id_number (int, optional): The ID number of the classifier. Defaults to 1.
-
-    Returns:
-        None
-    """
-    Xtrain, ytrain, Xtest, ytest = data
-
-    # Set training parameters
-    batch_size = config['batch_size']
-    lr = config['lr']
-    weight_decay = config['weight_decay']
-    epochs = config['epochs']
-    input_dim = Xtrain.shape[1] * Xtrain.shape[2]  # Number of features in the input
-    hidden_dim = config['hidden_dim']
-    optimizer_type = config['optimizer_type']
-    reg = config['reg']
-    num_workers = config['num_workers']
-
-    logger.info(f'number of inputs: {input_dim}, hidden_dim: {hidden_dim}')
-
-    net = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
-
-    if incremental_learning:
-        # Load the pre-trained model
-        net.load_state_dict(torch.load(f'{classifier.lower()}_{id_number}_epochs_{epochs}_batchsize_{batch_size}_lr_{lr}_*.pth'))
-        if transfer_learning:
-            for name, param in net.named_parameters():
-                if 'lin1' in name or 'lin2' in name:
-                    param.requires_grad = False
-                else:
-                    param.requires_grad = True
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-    else:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info(f'Moving model to {device}')
-        net.to(device)
-
-        if optimizer_type == 'Adam':
-            optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
-        elif optimizer_type == 'SGD':
-            optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=weight_decay)
-        else:
-            raise ValueError('Invalid optimizer type. Please choose either "Adam" or "SGD".')
-
-    # Initialize the trainer
-    mlp_trainer = UnifiedTrainer(
-        model=net,
-        optimizer=optimizer,
-        epochs=epochs,
-        batch_size=batch_size,
-        lr=lr,
-        reg=reg,
-        id_number=id_number,
-        model_type='MLP',
-        num_workers=num_workers
-    )
-
-    # Run training and testing
-    mlp_trainer.run(Xtrain, ytrain, Xtest, ytest)
-
-    # Report the test accuracy to Ray Tune if tuning is enabled
-    if enable_tuning:
-        tune.report(accuracy=mlp_trainer.test_accuracy)

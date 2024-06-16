@@ -98,6 +98,11 @@ training_param_iface = gr.Interface(
         gr.Slider(minimum=1, maximum=4, step=1, value=1, label='NNet Number of Layers', info='NNet number of layers for training.'),
         gr.Dropdown(choices=['Adam', 'SGD'], value='Adam', label='Optimizer', info='Select the optimizer for training.'),
         gr.Slider(minimum=1, maximum=16, step=1, value=8, label='Number of Workers for DataLoader', info='Number of workers for DataLoader.'),
+        gr.Dropdown(choices=['ReduceLROnPlateau', 'ExponentialLR', 'StepLR'], value='ReduceLROnPlateau', label='Scheduler Type', info='Select the scheduler for training.'),
+        gr.Slider(minimum=0.1, maximum=0.5, step=0.1, value=0.1, label='Scheduler Factor', info='Select the scheduler factor for training, this is the factor by which the learning rate will be reduced.'),
+        gr.Slider(minimum=5, maximum=50, step=1, value=10, label='Scheduler Patience', info='Select the scheduler patience for training, this is the number of epochs with no improvement after which learning rate will be reduced.'),
+        gr.Slider(minimum=10, maximum=50, step=1, value=30, label='Scheduler Step Size', info='Select the scheduler step size for training, this is the number of epochs after which the learning rate is multiplied by gamma.'),
+        gr.Slider(minimum=0.1, maximum=1, step=0.1, value=0.9, label='Scheduler Gamma', info='Select the scheduler gamma for training, this is the factor by which the learning rate is multiplied after each step_size epochs.'),
     ],
     outputs=gr.Textbox(placeholder="See updated parameters below.", label="Updated Parameters"),
     description="Training Parameters for Predicting System Failures using Machine Learning Techniques",  # Description of the interface
