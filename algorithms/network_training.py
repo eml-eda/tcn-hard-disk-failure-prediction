@@ -142,6 +142,21 @@ def train_dl_model(
     classifier='FPLSTM',
     id_number=1
 ):
+    """
+    Train a deep learning model.
+
+    Args:
+        config (dict): Configuration parameters for training the model.
+        data (tuple): Tuple containing the training and testing data.
+        enable_tuning (bool, optional): Flag to enable tuning. Defaults to True.
+        incremental_learning (bool, optional): Flag to enable incremental learning. Defaults to False.
+        transfer_learning (bool, optional): Flag to enable transfer learning. Defaults to False.
+        classifier (str, optional): Type of classifier to use. Defaults to 'FPLSTM'.
+        id_number (int, optional): ID number for the model. Defaults to 1.
+
+    Returns:
+        None
+    """
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
