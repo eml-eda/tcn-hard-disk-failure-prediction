@@ -103,6 +103,7 @@ training_param_iface = gr.Interface(
         gr.Slider(minimum=5, maximum=50, step=1, value=10, label='Scheduler Patience', info='Select the scheduler patience for training, this is the number of epochs with no improvement after which learning rate will be reduced.'),
         gr.Slider(minimum=10, maximum=50, step=1, value=30, label='Scheduler Step Size', info='Select the scheduler step size for training, this is the number of epochs after which the learning rate is multiplied by gamma.'),
         gr.Slider(minimum=0.1, maximum=1, step=0.1, value=0.9, label='Scheduler Gamma', info='Select the scheduler gamma for training, this is the factor by which the learning rate is multiplied after each step_size epochs.'),
+        gr.Dropdown(choices=['CrossEntropy', 'BCEWithLogits'], value='CrossEntropy', label='Loss Function', info='Select the loss function for training.'),
     ],
     outputs=gr.Textbox(placeholder="See updated parameters below.", label="Updated Parameters"),
     description="Training Parameters for Predicting System Failures using Machine Learning Techniques",  # Description of the interface

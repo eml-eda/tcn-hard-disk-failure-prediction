@@ -44,6 +44,7 @@ TRAINING_PARAMS = {
     'scheduler_patience': 10,
     'scheduler_step_size': 30,
     'scheduler_gamma': 0.9,
+    'loss_function': 'CrossEntropy'
 }
 
 def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
@@ -452,7 +453,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
-                "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                "loss_function": TRAINING_PARAMS['loss_function']
             }
             if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                 config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -505,7 +507,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
-                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                    "loss_function": TRAINING_PARAMS['loss_function']
                 }
                 if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                     config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -536,7 +539,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
-                "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                "loss_function": TRAINING_PARAMS['loss_function']
             }
             if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                 config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -592,7 +596,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
-                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                    "loss_function": TRAINING_PARAMS['loss_function']
                 }
                 if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                     config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -621,7 +626,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
-                "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                "loss_function": TRAINING_PARAMS['loss_function']
             }
             if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                 config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -675,7 +681,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
-                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                    "loss_function": TRAINING_PARAMS['loss_function']
                 }
                 if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                     config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -704,7 +711,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
-                "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                "loss_function": TRAINING_PARAMS['loss_function']
             }
             if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                 config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -758,7 +766,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
-                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                    "loss_function": TRAINING_PARAMS['loss_function']
                 }
                 if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                     config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -785,7 +794,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                 "reg": TRAINING_PARAMS['reg'],
                 "num_workers": TRAINING_PARAMS['num_workers'],
-                "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                "loss_function": TRAINING_PARAMS['loss_function']
             }
             if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                 config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -839,7 +849,8 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                     "optimizer_type": TRAINING_PARAMS['optimizer_type'],
                     "reg": TRAINING_PARAMS['reg'],
                     "num_workers": TRAINING_PARAMS['num_workers'],
-                    "scheduler_type": TRAINING_PARAMS['scheduler_type']
+                    "scheduler_type": TRAINING_PARAMS['scheduler_type'],
+                    "loss_function": TRAINING_PARAMS['loss_function']
                 }
                 if TRAINING_PARAMS['scheduler_type'] == 'StepLR':
                     config["scheduler_step_size"] = TRAINING_PARAMS['scheduler_step_size']
@@ -955,7 +966,8 @@ def set_training_params(*args):
         'scheduler_factor',
         'scheduler_patience',
         'scheduler_step_size',
-        'scheduler_gamma'
+        'scheduler_gamma',
+        'loss_function'
     ]
     # Use the global keyword when modifying global variables
     global TRAINING_PARAMS

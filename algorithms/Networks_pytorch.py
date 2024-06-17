@@ -406,7 +406,24 @@ class TCNDataset(torch.utils.data.Dataset):
         return (self.x_tensors[idx], self.y_tensors[idx])
 
 class UnifiedTrainer:
-    def __init__(self, model, optimizer, epochs, batch_size, lr, reg, id_number, model_type, num_workers, scheduler_type, scheduler_factor, scheduler_patience, scheduler_step_size, scheduler_gamma):
+    def __init__(
+        self,
+        model,
+        optimizer,
+        epochs=100,
+        batch_size=128,
+        lr=0.001,
+        reg=1,
+        id_number=1,
+        model_type='TCN',
+        num_workers=4,
+        scheduler_type='ReduceLROnPlateau',
+        scheduler_factor=0.1,
+        scheduler_patience=10,
+        scheduler_step_size=30,
+        scheduler_gamma=0.9,
+        loss_function='CrossEntropy'
+    ):
         """
         Initialize the UnifiedTrainer with all necessary components.
 
@@ -425,6 +442,7 @@ class UnifiedTrainer:
             scheduler_patience (int): The patience for the scheduler.
             scheduler_step_size (int): The step size for the scheduler.
             scheduler_gamma (float): The gamma for the scheduler.
+            loss_function (str): The loss function to use for training.
         """
         self.model = model
         self.optimizer = optimizer
@@ -448,6 +466,7 @@ class UnifiedTrainer:
             self.scheduler = StepLR(optimizer, step_size=scheduler_step_size, gamma=1 - scheduler_gamma)  # step_size=30, gamma=0.1
         else:
             raise ValueError(f"Invalid scheduler_type: {scheduler_type}")
+        self.loss_function = loss_function
         self.test_writer = SummaryWriter(f'runs/{model_type}_Test_Graph')
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Get the device
         self.test_accuracy = 0  # Initialize test_accuracy
@@ -502,7 +521,12 @@ class UnifiedTrainer:
         # Convert class weights to a CUDA tensor
         class_weights = torch.FloatTensor(weights).to(self.device)
         # We use the CrossEntropyLoss as loss function to guide the model towards making accurate predictions on the training data.
-        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        if self.loss_function == 'CrossEntropy':
+            criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        elif self.loss_function == 'BCEWithLogits':
+            criterion = torch.nn.BCEWithLogitsLoss(weight=class_weights)
+        else:
+            raise ValueError(f"Invalid loss function: {self.loss_function}")
         predictions = np.zeros((len(train_loader.dataset), 2))  # Store the model's predictions
         true_labels = np.zeros(len(train_loader.dataset))  # Store the true labels
 
@@ -576,7 +600,12 @@ class UnifiedTrainer:
             None
         """
         self.model.eval()
-        criterion = torch.nn.CrossEntropyLoss()
+        if self.loss_function == 'CrossEntropy':
+            criterion = torch.nn.CrossEntropyLoss()
+        elif self.loss_function == 'BCEWithLogits':
+            criterion = torch.nn.BCEWithLogitsLoss()
+        else:
+            raise ValueError(f"Invalid loss function: {self.loss_function}")
         predictions = np.zeros((len(test_loader.dataset), 2))
         true_labels = np.zeros(len(test_loader.dataset))
     

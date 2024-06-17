@@ -11,7 +11,19 @@ from tqdm import tqdm
 from datetime import datetime
 
 
-def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_train, X_test, Y_test, id_number, metric, search_method='randomized', n_iterations=100):
+def train_and_evaluate_model(
+    model,
+    param_grid,
+    classifier_name,
+    X_train,
+    Y_train,
+    X_test,
+    Y_test,
+    id_number=1,
+    metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
+    search_method='randomized',
+    n_iterations=100
+):
     """
     Trains and evaluates a machine learning model.
 
@@ -109,7 +121,15 @@ def train_and_evaluate_model(model, param_grid, classifier_name, X_train, Y_trai
 
     return model_path
 
-def train_dl_model(config, data, enable_tuning=True, incremental_learning=False, transfer_learning=False, classifier='FPLSTM', id_number=1):
+def train_dl_model(
+    config,
+    data,
+    enable_tuning=True,
+    incremental_learning=False,
+    transfer_learning=False,
+    classifier='FPLSTM',
+    id_number=1
+):
     Xtrain, ytrain, Xtest, ytest = data
 
     # Set training parameters
@@ -122,6 +142,7 @@ def train_dl_model(config, data, enable_tuning=True, incremental_learning=False,
     reg = config['reg']
     num_workers = config['num_workers']
     scheduler_type = config['scheduler_type']
+    loss_function = config['loss_function']
 
     if config['scheduler_type'] == 'StepLR':
         scheduler_step_size = config['scheduler_step_size']
@@ -192,7 +213,8 @@ def train_dl_model(config, data, enable_tuning=True, incremental_learning=False,
         scheduler_factor=scheduler_factor,
         scheduler_patience=scheduler_patience,
         scheduler_step_size=scheduler_step_size,
-        scheduler_gamma=scheduler_gamma
+        scheduler_gamma=scheduler_gamma,
+        loss_function=loss_function
     )
 
     trainer.run(Xtrain, ytrain, Xtest, ytest)
