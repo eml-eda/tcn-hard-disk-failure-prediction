@@ -47,7 +47,19 @@ def train_and_evaluate_model(
     X_train, Y_train = shuffle(X_train, Y_train)
 
     # Define supervised classifiers
-    supervised_classifiers = ['RandomForest', 'KNeighbors', 'DecisionTree', 'LogisticRegression', 'SVM', 'XGB', 'MLP', 'ExtraTrees', 'GradientBoosting', 'NaiveBayes', 'RGF']
+    supervised_classifiers = [
+        'RandomForest',
+        'KNeighbors',
+        'DecisionTree',
+        'LogisticRegression',
+        'SVM',
+        'XGB',
+        'MLP',
+        'ExtraTrees',
+        'GradientBoosting',
+        'NaiveBayes',
+        'RGF'
+    ]
 
     # Define scoring metrics based on the type of classifier
     if classifier_name in supervised_classifiers:

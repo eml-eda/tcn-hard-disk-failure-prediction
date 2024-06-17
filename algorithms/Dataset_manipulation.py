@@ -965,6 +965,7 @@ def feature_selection(df, num_features, test_type, enable_ga_algorithm, n_pop, n
 
     Returns:
         pandas.DataFrame: The dataframe with the selected features.
+        list: The list of selected features and the corresponding p-values.
     """
     if enable_ga_algorithm == True:
         y = df['predict_val']
@@ -1026,7 +1027,7 @@ def feature_selection(df, num_features, test_type, enable_ga_algorithm, n_pop, n
             features = np.concatenate((features, np.asarray(feature).reshape(1,)))
     # Step 1.4.2.5: Update df to only include selected features
     df = df[features]
-    return df
+    return df, features
 
 if __name__ == '__main__':
     features = {

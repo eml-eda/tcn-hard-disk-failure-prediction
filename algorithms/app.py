@@ -35,6 +35,7 @@ parser.add_argument('--hyperparameter_tuning', default=False, help='Enable hyper
 parser.add_argument('--genetic_algorithm', default=False, help='Enable Genetic Algorithm for Primary Feature Selection.')
 parser.add_argument('--population_number', default=10, type=int, help='Number of individuals in each generation.')
 parser.add_argument('--stop_criteria', default=2, type=int, help='Stop the genetic algorithm after certain generations.')
+parser.add_argument('--weighted_feature_training', default=False, help='Check to enable weighted feature training.')
 # Add more arguments as needed
 args = parser.parse_args()
 
@@ -73,6 +74,7 @@ main_iface = gr.Interface(
         gr.Checkbox(value=False, label='Enable Genetic Algorithm', info='Enable Genetic Algorithm for Primary Feature Selection.'),
         gr.Slider(minimum=5, maximum=50, step=1, value=10, label='Population Number', info='Number of individuals in each generation.'),
         gr.Slider(minimum=1, maximum=10, step=1, value=2, label='Stop Criteria', info='Stop the genetic algorithm after certain generations.'),
+        gr.Checkbox(value=False, label='Enable Weighted Feature Training', info='Check to enable weighted feature training.'),
     ],
     outputs=[
         gr.File(label='Download Log File', type='filepath'),
