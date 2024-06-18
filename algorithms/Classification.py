@@ -971,10 +971,10 @@ def set_training_params(*args):
         'loss_function'
     ]
     # Use the global keyword when modifying global variables
-    global TRAINING_PARAMS
+    global TRAINING_PARAMS # pylint: disable=global-statement
     TRAINING_PARAMS = dict(zip(param_names, args))
     # Print out updated parameters to Gradio interface
-    return f"Parameters successfully updated:\n" + "\n".join([f"{key}: {value}" for key, value in TRAINING_PARAMS.items()])
+    return "Parameters successfully updated:\n" + "\n".join([f"{key}: {value}" for key, value in TRAINING_PARAMS.items()])
 
 def initialize_classification(*args):
     ray.init()
@@ -1090,7 +1090,7 @@ def initialize_classification(*args):
         # Step 1: Load the dataset from pkl file.
         df = pd.read_pickle(os.path.join(script_dir, '..', 'output', f'{model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl'))
         logger.info(f'Loading file from pickle file: {model_string}_Dataset_selected_windowed_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}.pkl')
-    except:
+    except: # pylint: disable=bare-except
         # Step 1.1: Import the dataset from the raw data.
         if ranking == 'None':
             df = import_data(years=years, models=models, name='iSTEP', features=features, manufacturer=manufacturer)
@@ -1281,7 +1281,7 @@ def initialize_partitioner(df, *args):
     try:
         data = np.load(os.path.join(output_dir, f'{model_string}_training_and_testing_data_{history_signal}_rank_{ranking}_{num_features}_overlap_{overlap}_features_extraction_method_{features_extraction_method}_oversample_undersample_{oversample_undersample}.npz'))
         Xtrain, Xtest, ytrain, ytest = data['Xtrain'], data['Xtest'], data['Ytrain'], data['Ytest']
-    except:
+    except: # pylint: disable=bare-except
         # Step x.1: Feature Extraction
         if features_extraction_method == 'custom':
             # Extract features for the train and test set
