@@ -15,13 +15,14 @@ from collections import Counter
 import logger
 from tqdm import tqdm
 from GeneticFeatureSelector import GeneticFeatureSelector
-from hmmlearn import hmm
+from scipy.stats import skew
 from imblearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
 from sklearn.metrics import pairwise_distances
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from scipy.special import rel_entr
+import dask.dataframe as dd
 
 
 def import_data(years, models, name, **args):
@@ -114,6 +115,7 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
     for serial_num, inner_df in tqdm(df.groupby(level=0), desc="Analyzing Hard Drives", unit="drive", ncols=100):
         if len(inner_df) < min_days:  # identify HDs with too few power-on days
             bad_power_hds.append(serial_num)
+            continue
 
         inner_df = inner_df.droplevel(level=0).asfreq('D')  # Convert inner_df to daily frequency
 
@@ -124,7 +126,8 @@ def filter_HDs_out(df, min_days, time_window, tolerance):
         n_missing = inner_df.isna().rolling(time_window).sum()
 
         # Identify HDs with too many missing values, compared to the moving average
-        bad_missing_hds = n_missing[n_missing > moving_avg_missing * tolerance].index.tolist()
+        if (n_missing > moving_avg_missing * tolerance).any().any():
+            bad_missing_hds.append(serial_num)
 
     bad_hds = set(bad_missing_hds + bad_power_hds)
     logger.info(f'Filter result: bad_missing_hds: {len(bad_missing_hds)}, bad_power_hds: {len(bad_power_hds)}')
@@ -251,7 +254,7 @@ def feature_extraction(X):
     """
     samples, features, dim_window = X.shape
     logger.info(f'Extracting: samples: {samples}, features: {features}, dim_window: {dim_window}')
-    X_feature = np.zeros((samples, features, 6))
+    X_feature = np.zeros((samples, features, 8))
     # sum of all the features
     X_feature[:,:,0] = np.sum((X), axis=2)
     #print(f'Sum: {X_feature[:,:,0]}')
@@ -275,25 +278,6 @@ def feature_extraction(X):
     '''
     #print(f'Coefficent: {X_feature[:,:,3]}')
     #print(f'Intercept: {X_feature[:,:,4]}')
-    # Use HMM to generate state sequences
-    '''
-    for f in tqdm(range(features), desc='Processing features with GaussianHMM', leave=False, unit='feature', ncols=100):
-        feature_series = X[:, f, :]
-        feature_series_reshaped = feature_series.reshape(-1, dim_window)
-
-        # Train HMM on the reshaped feature series
-        n_states = 3  # Number of hidden states (this can be adjusted)
-        hmm_model = hmm.GaussianHMM(n_components=n_states, covariance_type="diag", n_iter=1000)
-        hmm_model.fit(feature_series_reshaped)
-
-        # Generate state sequences for each sample
-        for s in tqdm(range(samples), desc='Generating state sequences for each sample', leave=False, unit='sample', ncols=100):
-            state_seq = hmm_model.predict(feature_series[s].reshape(-1, 1))
-            # Using the most frequent state as an additional feature
-            most_frequent_state = np.bincount(state_seq).argmax()
-            X_feature[s, f, 5] = most_frequent_state  # Store HMM result at index 5
-    '''
-    #print(f'HMM state sequence: {X_feature[:, :, 5]}')
 
     # Calculate the standard deviation
     X_feature[:, :, 4] = np.std(X, axis=2)
@@ -304,6 +288,12 @@ def feature_extraction(X):
         for f in range(features):
             X_feature[s, f, 5] = np.corrcoef(X[s, f, :-1], X[s, f, 1:])[0, 1]
     #print(f'Autocorrelation: {X_feature[:, :, 7]}')
+    # Calculate the RMS
+    X_feature[:, :, 6] = np.sqrt(np.mean(np.square(X), axis=2))
+    #print(f'RMS: {X_feature[:, :, 6]}')
+    # Calculate the skewness
+    X_feature[:, :, 7] = skew(X, axis=2)
+    #print(f'Skewness: {X_feature[:, :, 7]}')
 
     return X_feature
 
@@ -521,6 +511,86 @@ class DatasetPartitioner:
         df.columns = cols
         df.sort_index(axis=1, inplace=True)
         return df
+
+    # def perform_windowing_2(self):
+    #     """
+    #     Perform the windowing operation on the dataset.
+    #     We have the serial_number and date columns in the dataset here.
+
+    #     Parameters:
+    #         None
+
+    #     Returns:
+    #     - DataFrame: The windowed dataframe.
+    #     """
+    #     # Convert the initial DataFrame to a Dask DataFrame for heavy operations
+    #     chunk_columns = 100000
+    #     windowed_df = dd.from_pandas(self.df.copy(), npartitions=int(len(self.df)/chunk_columns) + 1)
+    #     if self.overlap == 1:  # If the overlap option is chosed as complete overlap
+    #         # The following code will generate self.window_dim - 1 columns for each column in the dataset
+    #         for i in np.arange(self.window_dim - 1):
+    #             print(f'Concatenating time - {i} \r', end="\r")
+    #             # Shift the dataframe and concatenate along the columns
+    #             windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+    #     elif self.overlap == 2:  # If the overlap option is chosed as dynamic overlap based on the factors of window_dim
+    #         # Get the factors of window_dim
+    #         window_dim_divisors = self.factors(self.window_dim)
+    #         total_shifts = 0
+    #         previous_down_factor = 1
+    #         serials = self.df['serial_number']
+    #         for down_factor in window_dim_divisors:
+    #             # Shift the dataframe by the factor and concatenate
+    #             for i in np.arange(down_factor - 1):
+    #                 total_shifts += previous_down_factor
+    #                 print(f'Concatenating time - {total_shifts} \r', end="\r")
+    #                 windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+    #             previous_down_factor *= down_factor
+
+    #             # Compute intermediate result to apply sampling
+    #             windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
+    #             # Under sample the dataframe based on the serial numbers and the factor
+    #             indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
+    #             # Update windowed_df based on the indexes, undersamples the DataFrame based on the serial numbers and the factor down_factor, reducing the number of rows in the DataFrame.
+    #             windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
+    #             # Convert back to Dask DataFrame
+    #             windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
+    #     else:  # If the overlap is other value, then we only completely overlap the dataset for the failed HDDs, and dynamically overlap the dataset for the good HDDs
+    #         # Get the factors of window_dim
+    #         window_dim_divisors = self.factors(self.window_dim)
+    #         total_shifts = 0
+    #         previous_down_factor = 1
+    #         serials = self.df['serial_number']
+    #         df_failed = self.df[self.df['validate_val']==1]
+    #         windowed_df_failed = df_failed
+    #         for i in np.arange(self.window_dim - 1):
+    #             print(f'Concatenating time - {i} \r', end="\r")
+    #             # Shift the dataframe and concatenate along the columns
+    #             windowed_df_failed = dd.concat([self.df.shift(i + 1), windowed_df_failed], axis=1)
+    #         for down_factor in window_dim_divisors:
+    #             # Shift the dataframe by the factor and concatenate
+    #             for i in np.arange(down_factor - 1):
+    #                 total_shifts += previous_down_factor
+    #                 print(f'Concatenating time - {total_shifts} \r', end="\r")
+    #                 windowed_df = dd.concat([self.df.shift(i + 1), windowed_df], axis=1)
+    #             previous_down_factor *= down_factor
+
+    #             # Compute intermediate result to apply sampling
+    #             windowed_df = windowed_df.compute()  # Convert back to pandas for sampling
+    #             # Under sample the dataframe based on the serial numbers and the factor
+    #             indexes = windowed_df.groupby(serials).apply(self.under_sample, down_factor)
+    #             # Update windowed_df based on the indexes
+    #             windowed_df = windowed_df.loc[np.concatenate(indexes.values.tolist(), axis=0), :]
+    #             # Convert back to Dask DataFrame
+    #             windowed_df = dd.from_pandas(windowed_df, npartitions=int(len(windowed_df)/chunk_columns) + 1)
+
+    #         windowed_df = dd.concat([windowed_df, windowed_df_failed])
+    #         windowed_df.reset_index(inplace=True, drop=True)
+
+    #     # Compute the final Dask DataFrame to pandas DataFrame
+    #     final_df = windowed_df.compute()
+    #     # Generate the final DataFrame
+    #     final_df.to_pickle(os.path.join(self.script_dir, '..', 'output', f'{self.model}_Dataset_windowed_{self.window_dim}_rank_{self.rank}_{self.num_features}_overlap_{self.overlap}.pkl'))
+    #     return self.rename_columns(final_df)
 
     def perform_windowing(self):
         """

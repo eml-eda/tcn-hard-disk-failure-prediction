@@ -1175,7 +1175,7 @@ def initialize_classification(*args):
 
             # Perform classification for the irrelevant_df
             return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, enable_tuning, enable_tuning, incremental_learning, True, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, True, param_path
             )
         else:
             # Partition the dataset into training and testing sets for the irrelevant_df
