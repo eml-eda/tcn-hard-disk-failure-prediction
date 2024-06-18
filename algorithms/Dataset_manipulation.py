@@ -22,6 +22,7 @@ from scipy.stats import pearsonr
 from sklearn.metrics import pairwise_distances
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from scipy.special import rel_entr
+import pywt
 import dask.dataframe as dd
 
 
@@ -335,7 +336,8 @@ class DatasetPartitioner:
         https://github.com/Prognostika/tcn-hard-disk-failure-prediction/wiki/Code_Process#partition-dataset-subflowchart
     """
     def __init__(self, df, model, overlap=0, rank='None', num_features=10, test_type='t-test', technique='random',
-                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample='None', fillna_method='None', smoothing_level=0.5):
+                 test_train_perc=0.2, windowing=1, window_dim=5, resampler_balancing='auto', oversample_undersample='None',
+                 fillna_method='None', smoothing_level=0.5, max_wavelet_scales=50):
         """
         Initialize the DatasetPartitioner object.
         
@@ -370,8 +372,52 @@ class DatasetPartitioner:
         self.oversample_undersample = oversample_undersample
         self.fillna_method = fillna_method
         self.smoothing_level = smoothing_level
+        self.max_wavelet_scales = max_wavelet_scales
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.Xtrain, self.Xtest, self.ytrain, self.ytest = self.partition()
+
+    def apply_cwt(self, df, wavelet='cmor'):
+        """
+        Apply the Continuous Wavelet Transform (CWT) to each windowed segment.
+        Assumes the input dataframe is pre-windowed and columns are named to reflect time-series data points in each window.
+        
+        Args:
+            df (DataFrame): DataFrame containing windowed time-series data.
+            scales (array): Array of scales to use for the CWT.
+            wavelet (str): Wavelet function name.
+        
+        Returns:
+            DataFrame: A DataFrame where each cell contains the CWT result (complex coefficients) for that segment.
+        """
+        scales=np.arange(1, self.max_wavelet_scales)
+        # Applying CWT along the rows assuming each row is a time-windowed segment
+        cwt_columns = [col for col in df.columns if 'smart' in col]  # Assuming SMART data columns start with 'smart'
+        for col in tqdm(cwt_columns, desc="Processing columns", leave=False, unit="column", ncols=100):
+            # Extract the signal from the DataFrame
+            signal = df[col].values
+            # Apply Continuous Wavelet Transform
+            coefficients, frequencies = pywt.cwt(signal, scales, wavelet)
+            # Store results: Magnitude of coefficients for simplicity in handling and visualization
+            df[col] = list(coefficients)  # Store as list of arrays (one per scale)
+
+        return df
+
+    def apply_exponential_smoothing(self, df):
+        """
+        Apply exponential smoothing to each time-series data column in the DataFrame.
+
+        Args:
+            df (DataFrame): DataFrame containing time-series data.
+
+        Returns:
+            DataFrame: A DataFrame with the smoothed time-series data.
+        """
+        for serial_num, group in tqdm(df.groupby('serial_number'), desc="Processing groups", leave=False, unit="group", ncols=100):
+            for col in group.columns:
+                if col.startswith('smart'):
+                    group[col] = ExponentialSmoothing(group[col], trend=None, seasonal=None, seasonal_periods=None).fit(smoothing_level=self.smoothing_level).fittedvalues
+            df.loc[group.index] = group
+        return df
 
     def partition(self):
         """
@@ -404,12 +450,10 @@ class DatasetPartitioner:
         windowed_df = self.preprocess_dataset(windowed_df)
         # Add exponential smoothing method
         logger.info('Performing exponential smoothing...')
-        # TODO:
-        for serial_num, group in tqdm(windowed_df.groupby('serial_number'), desc="Processing groups", leave=False, unit="group", ncols=100):
-            for col in group.columns:
-                if col.startswith('smart'):
-                    group[col] = ExponentialSmoothing(group[col], trend=None, seasonal=None, seasonal_periods=None).fit(smoothing_level=self.smoothing_level).fittedvalues
-            windowed_df.loc[group.index] = group
+        windowed_df = self.apply_exponential_smoothing(windowed_df)
+        # Apply DTFT right after windowing
+        logger.info('Applying CWT...')
+        windowed_df = self.apply_cwt(windowed_df)
         logger.info('Creating training and test dataset...')
         return self.split_dataset(windowed_df)
     
@@ -466,7 +510,6 @@ class DatasetPartitioner:
     def handle_windowing(self):
         """
         Handle the windowing process for the dataset.
-
 
         Parameters:
             None
@@ -777,7 +820,6 @@ class DatasetPartitioner:
             return df
          
         # Replace the 'predict_val' column with a new column 'predict_val' that contains the maximum value of the 'predict_val' columns
-        # Fixed RegEx problem
         predict_val_cols = [col for col in df.columns if re.match(r'^predict_val_\d+$', col)]
         df['predict_val'] = df[predict_val_cols].max(axis=1)
 
@@ -985,7 +1027,7 @@ def find_relevant_models(df):
         for other_model in tqdm(unique_models, desc=f"Processing KLDs for model {model}", leave=False, unit='model', ncols=100):
             if model != other_model:
                 other_model_data = df_copy[df_copy['model'] == other_model][smart_cols].fillna(0)
-                
+
                 # Calculate KLD for each SMART attribute independently and weight by p-value
                 for smart_col in smart_cols:
                     p = model_data[smart_col].to_numpy() + 1e-10  # Add a small value to avoid division by zero
@@ -996,7 +1038,7 @@ def find_relevant_models(df):
                     _, p_value = scipy.stats.ttest_ind(p, q, equal_var=False)
                     # Use the inverse of the p-value as the weight (the smaller the p-value, the higher the weight)
                     weight = 1 / (p_value + 1e-10)
-                    
+
                     weighted_klds.append(kld_value * weight)
 
         if weighted_klds:

@@ -1038,7 +1038,7 @@ def initialize_classification(*args):
         'history_signal', 'classifier', 'features_extraction_method', 'cuda_dev',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
         'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'incremental_learning', 'transfer_learning', 'partition_models',
-        'enable_tuning', 'enable_ga_algorithm', 'number_pop', 'number_gen', 'apply_weighted_feature'
+        'enable_tuning', 'enable_ga_algorithm', 'number_pop', 'number_gen', 'apply_weighted_feature', 'max_wavelet_scales'
     ]
 
     # Assign values directly from the dictionary
@@ -1048,7 +1048,7 @@ def initialize_classification(*args):
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
         search_method, fillna_method, pca_components, smoothing_level, incremental_learning, transfer_learning, partition_models,
-        enable_tuning, enable_ga_algorithm, number_pop, number_gen, apply_weighted_feature
+        enable_tuning, enable_ga_algorithm, number_pop, number_gen, apply_weighted_feature, max_wavelet_scales
     ) = dict(zip(param_names, args)).values()
     models = [m.strip() for m in model.split(',')]
     model_string = "_".join(models)
@@ -1145,7 +1145,7 @@ def initialize_classification(*args):
         test_train_perc, oversample_undersample, balancing_normal_failed,
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
-        search_method, enable_tuning, fillna_method, pca_components, smoothing_level
+        search_method, enable_tuning, fillna_method, pca_components, smoothing_level, max_wavelet_scales
     )
 
     if transfer_learning:
@@ -1156,7 +1156,7 @@ def initialize_classification(*args):
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level,
-                apply_weighted_feature, feature_weights
+                apply_weighted_feature, feature_weights, max_wavelet_scales
             )
 
             # Perform classification for the relevant_df
@@ -1170,7 +1170,7 @@ def initialize_classification(*args):
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level,
-                apply_weighted_feature, feature_weights
+                apply_weighted_feature, feature_weights, max_wavelet_scales
             )
 
             # Perform classification for the irrelevant_df
@@ -1184,7 +1184,7 @@ def initialize_classification(*args):
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level,
-                apply_weighted_feature, feature_weights
+                apply_weighted_feature, feature_weights, max_wavelet_scales
             )
 
             # Perform classification for the irrelevant_df
@@ -1199,7 +1199,7 @@ def initialize_classification(*args):
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level,
-                apply_weighted_feature, feature_weights
+                apply_weighted_feature, feature_weights, max_wavelet_scales
             )
 
         else:
@@ -1209,7 +1209,7 @@ def initialize_classification(*args):
                 oversample_undersample, balancing_normal_failed, history_signal, 
                 classifier, features_extraction_method, ranking, num_features, 
                 overlap, split_technique, fillna_method, pca_components, smoothing_level,
-                apply_weighted_feature, feature_weights
+                apply_weighted_feature, feature_weights, max_wavelet_scales
             )
 
         # Perform classification for the relevant_df
@@ -1242,7 +1242,7 @@ def initialize_partitioner(df, *args):
         'history_signal', 'classifier', 'features_extraction_method',
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
         'search_method', 'fillna_method', 'pca_components', 'smoothing_level',
-        'apply_weighted_feature', 'feature_weights'
+        'apply_weighted_feature', 'feature_weights', 'max_wavelet_scales'
     ]
 
     # Assign values directly from the dictionary
@@ -1252,7 +1252,7 @@ def initialize_partitioner(df, *args):
         history_signal, classifier, features_extraction_method,
         ranking, num_features, overlap, split_technique,
         fillna_method, pca_components, smoothing_level,
-        apply_weighted_feature, feature_weights
+        apply_weighted_feature, feature_weights, max_wavelet_scales
     ) = dict(zip(param_names, args)).values()
     ## -------- ##
     # random: stratified without keeping time order
@@ -1272,7 +1272,8 @@ def initialize_partitioner(df, *args):
         resampler_balancing=balancing_normal_failed,
         oversample_undersample=oversample_undersample,
         fillna_method=fillna_method,
-        smoothing_level=smoothing_level
+        smoothing_level=smoothing_level,
+        max_wavelet_scales=max_wavelet_scales
     )
 
     # Print the line of Xtrain and Xtest
