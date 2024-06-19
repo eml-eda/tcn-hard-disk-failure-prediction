@@ -23,6 +23,7 @@ from sklearn.metrics import pairwise_distances
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from scipy.special import rel_entr
 import pywt
+from numpy.linalg import matrix_rank
 import dask.dataframe as dd
 
 
@@ -236,7 +237,6 @@ def generate_failure_predictions(df, days, window):
     valid_list = np.asarray(valid_list)
     return df, pred_list, valid_list
 
-
 def feature_extraction(X):
     """
     Extracts features from the input data with the following steps:
@@ -268,17 +268,17 @@ def feature_extraction(X):
     # Calculate the slope of the features
     X_feature[:,:,3] = (np.max((X), axis = 2) - np.min((X), axis = 2)) / dim_window
     #print(f'Similar slope: {X_feature[:,:,3]}')
-    # Use Linear Regression to extract slope and intercept
     '''
+    # Use Linear Regression to extract slope and intercept
     for s in tqdm(range(samples), desc='Processing samples with LinearRegression', unit='sample', ncols=100):
         for f in range(features):
             model = LinearRegression()
             model.fit(np.arange(dim_window).reshape(-1, 1), X[s, f, :])
             X_feature[s, f, 3] = model.coef_[0]  # Slope
             X_feature[s, f, 4] = model.intercept_  # Intercept
-    '''
     #print(f'Coefficent: {X_feature[:,:,3]}')
     #print(f'Intercept: {X_feature[:,:,4]}')
+    '''
 
     # Calculate the standard deviation
     X_feature[:, :, 4] = np.std(X, axis=2)
@@ -295,6 +295,11 @@ def feature_extraction(X):
     # Calculate the skewness
     X_feature[:, :, 7] = skew(X, axis=2)
     #print(f'Skewness: {X_feature[:, :, 7]}')
+
+    # Compute and print the rank of the feature matrix
+    # If the rank is equivalent to the number of features, the features are linearly independent
+    rank = matrix_rank(X_feature)
+    print(f'Rank of the feature matrix: {rank}')
 
     return X_feature
 
@@ -451,7 +456,7 @@ class DatasetPartitioner:
         # Add exponential smoothing method
         logger.info('Performing exponential smoothing...')
         windowed_df = self.apply_exponential_smoothing(windowed_df)
-        # Apply DTFT right after windowing
+        # Apply wavelet transform right after windowing
         logger.info('Applying CWT...')
         windowed_df = self.apply_cwt(windowed_df)
         logger.info('Creating training and test dataset...')

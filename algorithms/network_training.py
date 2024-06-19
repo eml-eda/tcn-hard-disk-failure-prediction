@@ -9,7 +9,57 @@ from ray import tune
 from Networks_pytorch import *
 from tqdm import tqdm
 from datetime import datetime
+import socket
+from explainerdashboard import ClassifierExplainer, ExplainerDashboard
 
+
+def launch_explainer_dashboard(model, X_test, Y_test, classifier_name, port=8050):
+    """
+    Launches an ExplainerDashboard for a given trained model.
+    Note: The ExplainerDashboard primarily works with scikit-learn models.
+
+    Args:
+        model (sklearn.base.BaseEstimator): The trained model.
+        X_test (array-like): Test features.
+        Y_test (array-like): Test labels.
+        classifier_name (str): Name of the classifier to be used as the title.
+        port (int): The port on which to run the dashboard.
+    """
+    # Function to check if a port is available
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(('localhost', port)) == 0
+
+    # Find an available port
+    while is_port_in_use(port):
+        port += 1
+
+    explainer = ClassifierExplainer(model, X_test, Y_test)
+    db = ExplainerDashboard(explainer, title=f"{classifier_name} Model Explainer", whatif=False)  # Customize features as needed
+    db.run(port=port)
+    logger.info(f"Dashboard is running on http://localhost:{port}")
+
+def save_model(model, classifier_name, id_number, n_iterations):
+    """
+    Saves the trained model to a file.
+
+    Args:
+        model (object): The trained model.
+        classifier_name (str): The name of the classifier.
+        id_number (str): The ID number for the model.
+        n_iterations (int): The number of iterations for training.
+
+    Returns:
+        str: The path to the saved model file.
+    """
+    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path = os.path.join(model_dir, f'{classifier_name}_{id_number}_iterations_{n_iterations}_{now_str}.joblib')
+    dump(model, model_path)
+    logger.info(f'Model saved as: {model_path}')
+    return model_path
 
 def train_and_evaluate_model(
     model,
@@ -22,7 +72,8 @@ def train_and_evaluate_model(
     id_number=1,
     metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
     search_method='randomized',
-    n_iterations=100
+    n_iterations=100,
+    launch_dashboard=False
 ):
     """
     Trains and evaluates a machine learning model.
@@ -67,6 +118,7 @@ def train_and_evaluate_model(
     else:
         scoring = {'silhouette': make_scorer(silhouette_score)}
 
+    search = None
     if param_grid:
         if search_method == 'grid':
             # Initialize GridSearchCV
@@ -119,17 +171,10 @@ def train_and_evaluate_model(
     report_metrics(Y_test_real, prediction, metric, writer, n_iterations)
     writer.close()
 
-    # Save the trained model to a file
-    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'model', id_number)
-    # Create the directory if it doesn't exist
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-    # Format as string
-    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Save the model
-    model_path = os.path.join(model_dir, f'{classifier_name}_{id_number}_iterations_{n_iterations}_{now_str}.joblib')
-    dump(best_model, model_path)
-    logger.info(f'Model saved as: {model_path}')
+    model_path = save_model(best_model, classifier_name, id_number, n_iterations)
+
+    if launch_dashboard:
+        launch_explainer_dashboard(best_model, X_test, Y_test, classifier_name)
 
     return model_path
 

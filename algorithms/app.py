@@ -77,6 +77,7 @@ main_iface = gr.Interface(
         gr.Slider(minimum=1, maximum=10, step=1, value=2, label='Stop Criteria', info='Stop the genetic algorithm after certain generations.'),
         gr.Checkbox(value=False, label='Enable Weighted Feature Training', info='Check to enable weighted feature training.'),
         gr.Slider(minimum=10, maximum=200, step=5, value=50, label='Max Wavelet Scales', info='Maximum number of wavelet scales to consider.'),
+        gr.Checkbox(value=True, label='Launch the Dashboard for Training', info='Check to launch the dashboard for training, currently only support sklearn API'),
     ],
     outputs=[
         gr.File(label='Download Log File', type='filepath'),

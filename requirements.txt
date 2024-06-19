@@ -17,4 +17,4 @@ rgf_python
 modin[ray]
 ray
 deap
-hmmlearn
+explainerdashboard

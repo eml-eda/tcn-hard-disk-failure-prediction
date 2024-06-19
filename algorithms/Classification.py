@@ -104,7 +104,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'RandomForest', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'RandomForest',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'KNeighbors':
         # Step 1.7.2: Perform Classification using KNeighbors.
@@ -136,7 +149,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'KNeighbors', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'KNeighbors',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'DecisionTree':
         # Step 1.7.3: Perform Classification using DecisionTree.
@@ -172,7 +198,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'DecisionTree', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'DecisionTree',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'LogisticRegression':
         # Step 1.7.4: Perform Classification using LogisticRegression.
@@ -206,7 +245,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'LogisticRegression', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'LogisticRegression',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'SVM':
         # Step 1.7.5: Perform Classification using SVM.
@@ -238,7 +290,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'SVM', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'SVM',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'XGB':
         # Step 1.7.7: Perform Classification using XGBoost.
@@ -280,7 +345,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'XGB', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'XGB',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'IsolationForest':
         # Step 1.7.9: Perform Classification using IsolationForest.
@@ -316,7 +394,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'IsolationForest', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'IsolationForest',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'ExtraTrees':
         try:
@@ -347,7 +438,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'ExtraTreesClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'ExtraTreesClassifier',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'GradientBoosting':
         try:
@@ -382,7 +486,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'GradientBoostingClassifier', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'GradientBoostingClassifier',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'NaiveBayes':
         # Step 1.7.6: Perform Classification using Naive Bayes.
@@ -407,7 +524,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'NaiveBayes', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'NaiveBayes',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'RGF':
         # Step 1.7.7: Perform Classification using Regularized Greedy Forest (RGF).
@@ -439,7 +569,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'RGF', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'RGF',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'TCN':
         # Step 1.7.6: Perform Classification using TCN. Subflowchart: TCN Subflowchart. Train and validate the network using TCN
@@ -902,7 +1045,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'MLP', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'MLP',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
     elif classifier == 'DBSCAN':
         # Step 1.7.3: Perform Classification using DBSCAN.
@@ -936,7 +1092,20 @@ def classification(X_train, Y_train, X_test, Y_test, classifier, **args):
                 model.set_params(**default_params)
             param_grid = {}
 
-        return train_and_evaluate_model(model, param_grid, 'DBSCAN', X_train, Y_train, X_test, Y_test, args['id_number'], args['metric'], args['search_method'], args['n_iterations'])
+        return train_and_evaluate_model(
+            model,
+            param_grid,
+            'DBSCAN',
+            X_train,
+            Y_train,
+            X_test,
+            Y_test,
+            args['id_number'],
+            args['metric'],
+            args['search_method'],
+            args['n_iterations'],
+            args['launch_dashboard']
+        )
 
 def set_training_params(*args):
     """
@@ -1039,6 +1208,7 @@ def initialize_classification(*args):
         'ranking', 'num_features', 'overlap', 'split_technique', 'interpolate_technique',
         'search_method', 'fillna_method', 'pca_components', 'smoothing_level', 'incremental_learning', 'transfer_learning', 'partition_models',
         'enable_tuning', 'enable_ga_algorithm', 'number_pop', 'number_gen', 'apply_weighted_feature', 'max_wavelet_scales'
+        'launch_dashboard'
     ]
 
     # Assign values directly from the dictionary
@@ -1048,7 +1218,8 @@ def initialize_classification(*args):
         history_signal, classifier, features_extraction_method, CUDA_DEV,
         ranking, num_features, overlap, split_technique, interpolate_technique,
         search_method, fillna_method, pca_components, smoothing_level, incremental_learning, transfer_learning, partition_models,
-        enable_tuning, enable_ga_algorithm, number_pop, number_gen, apply_weighted_feature, max_wavelet_scales
+        enable_tuning, enable_ga_algorithm, number_pop, number_gen, apply_weighted_feature, max_wavelet_scales,
+        launch_dashboard
     ) = dict(zip(param_names, args)).values()
     models = [m.strip() for m in model.split(',')]
     model_string = "_".join(models)
@@ -1161,7 +1332,8 @@ def initialize_classification(*args):
 
             # Perform classification for the relevant_df
             perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, False, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, False,
+                launch_dashboard, param_path
             )
 
             # Partition the dataset into training and testing sets for the irrelevant_df
@@ -1175,7 +1347,8 @@ def initialize_classification(*args):
 
             # Perform classification for the irrelevant_df
             return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, True, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, True,
+                launch_dashboard, param_path
             )
         else:
             # Partition the dataset into training and testing sets for the irrelevant_df
@@ -1189,7 +1362,8 @@ def initialize_classification(*args):
 
             # Perform classification for the irrelevant_df
             return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, True, param_path
+                classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, True,
+                launch_dashboard, param_path
             )
     else:
         if partition_models == False:
@@ -1214,7 +1388,8 @@ def initialize_classification(*args):
 
         # Perform classification for the relevant_df
         return perform_classification(Xtrain, ytrain, Xtest, ytest, id_number, 
-            classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, False, param_path
+            classifier, CUDA_DEV, search_method, enable_tuning, incremental_learning, False,
+            launch_dashboard, param_path
         )
 
 def apply_feature_weights(data, feature_weights):
@@ -1331,7 +1506,7 @@ def perform_classification(*args):
         'Xtrain', 'ytrain', 'Xtest', 'ytest',
         'id_number', 'classifier', 'cuda_dev',
         'search_method', 'enable_tuning', 'incremental_learning',
-        'transfer_learning', 'param_path'
+        'transfer_learning', 'launch_dashboard', 'param_path'
     ]
 
     # Assign values directly from the dictionary
@@ -1339,7 +1514,7 @@ def perform_classification(*args):
         Xtrain, ytrain, Xtest, ytest,
         id_number, classifier, CUDA_DEV,
         search_method, enable_tuning, incremental_learning,
-        transfer_learning, param_path
+        transfer_learning, launch_dashboard, param_path
     ) = dict(zip(param_names, args)).values()
 
     # Step 1.6: Classifier Selection: set training parameters
@@ -1380,7 +1555,8 @@ def perform_classification(*args):
             # FDR, FAR, F1, recall, precision are not calculated for some algorithms, it will report as 0.0
             metric=['RMSE', 'MAE', 'FDR', 'FAR', 'F1', 'recall', 'precision'],
             search_method=search_method,
-            id_number=id_number
+            id_number=id_number,
+            launch_dashboard=launch_dashboard
         )
 
     return logger.get_log_file_path(), model_path, param_path
