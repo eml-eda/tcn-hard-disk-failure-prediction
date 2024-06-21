@@ -335,7 +335,7 @@ class TCN_Network(nn.Module):
         self.FC1_BN = nn.BatchNorm1d(64)
         self.FC1_ReLU = nn.ReLU()
         self.FC1_dropout = nn.Dropout(0.5)
-        
+
         # Final Linear transformation from 64 units to 2 output units for binary classification.
         self.GwayFC = nn.Linear(64, 2)
 

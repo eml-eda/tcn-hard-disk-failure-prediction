@@ -13,41 +13,17 @@
   - [Articles](#articles)
   - [TODO](#todo)
   - [Future Work for Algorithm](#future-work-for-algorithm)
+  - [Contact](#contact)
 
 ## Introduction
 
-This repository contains the code to reproduce the experiments of the paper "Predicting Hard Disk Failures in Data Centers using Temporal Convolutional Neural Networks", Burrello et al., Euro-Par 2020.
-Please cite the paper as:
+**A comprehensive machine learning project for predicting whether a hard disk will fail within a given time interval**
 
-@InProceedings{10.1007/978-3-030-71593-9_22,
+More than [2500 petabytes](https://www.domo.com/learn/data-never-sleeps-5?aid=ogsm072517_1&sf100871281=1) of data are generated every day by sources such as social media, IoT devices, etc., and every bit of it is valuable. That’s why modern storage systems need to be reliable, scalable, and efficient. To ensure that data is not lost or corrupted, many large-scale distributed storage systems, such as [Ceph](https://ceph.io) or [AWS](https://aws.amazon.com), use erasure-coded redundancy or mirroring. Although this provides reasonable fault tolerance, it can make it more difficult and expensive to scale up the storage cluster.
 
-author="Burrello, Alessio
+This project seeks to mitigate this problem using machine learning. Specifically, the goal of this project is to train a model that can predict if a given disk will fail within a predefined future time window. These predictions can then be used by Ceph (or other similar systems) to determine when to add or remove data replicas. In this way, the fault tolerance can be improved by up to an order of magnitude, since the probability of data loss is generally related to the probability of multiple, concurrent disk failures.
 
-and Pagliari, Daniele Jahier
-
-and Bartolini, Andrea
-
-and Benini, Luca
-
-and Macii, Enrico
-
-and Poncino, Massimo",
-
-title="Predicting Hard Disk Failures in Data Centers Using Temporal Convolutional Neural Networks",
-
-booktitle="Euro-Par 2020: Parallel Processing Workshops",
-
-year="2021",
-
-publisher="Springer International Publishing",
-
-address="Cham",
-
-pages="277--289",
-
-isbn="978-3-030-71593-9"
-
-}
+In addition to creating models, we also aim to catalyze community involvement in this domain by providing Jupyter notebooks to easily get started with and explore some publicly available datasets such as Backblaze Dataset and Ceph Telemetry. Ultimately, we want to provide a platform where data scientists and subject matter experts can collaborate and contribute to this ubiquitous problem of predicting disk failures.
 
 ## Code Structure
 
@@ -205,3 +181,7 @@ For more information, please refer to the [wiki](https://github.com/Disk-Failure
 2. Add multiple disk models for prediction. (Currently, we only have one disk model, ST4000DM000)
 3. Use time-based SMOTE for data augmentation on failed disk samples to balance the dataset.
 4. Use transfer learning to improve the model performance.
+
+## Contact
+
+This project is maintained by [Prognostika](https://prognostika.com/). If you have any questions, please feel free to contact us at [lrt2436559745@gmail.com](mailto:lrt2436559745@gmail.com)
