@@ -37,6 +37,7 @@ parser.add_argument('--population_number', default=10, type=int, help='Number of
 parser.add_argument('--stop_criteria', default=2, type=int, help='Stop the genetic algorithm after certain generations.')
 parser.add_argument('--weighted_feature_training', default=False, help='Check to enable weighted feature training.')
 parser.add_argument('--max_wavelet_scales', default=50, type=int, help='Maximum number of wavelet scales to consider.')
+parser.add_argument('--launch_dashboard', default=True, help='Check to launch the dashboard for training, currently only support sklearn API.')
 # Add more arguments as needed
 args = parser.parse_args()
 
