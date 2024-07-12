@@ -1,4 +1,0 @@
-- get_dataset.py: launch this script to collect the data from the URL.
-- find_failed.py: it creates a unified dataset from all the days of different years. It can create both a dataset with all HDD or only with failed ones (failed variable)
-- files_to_failed.py: it filters the files to collect only the chosen model
-- toList.py: it finally creates the database
